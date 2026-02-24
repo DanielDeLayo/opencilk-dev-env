@@ -7,7 +7,7 @@
             // Assign output file name with VSCode inner variables like ${fileBasename}
             "command": "make -j 4",
             "options": {
-              "cwd": "${workspaceFolder}/../build"
+              "cwd": "${workspaceFolder}/../opencilk-project/build"
             },
             "problemMatcher": ["$gcc"],
             "group": {
@@ -21,7 +21,7 @@
             // Assign output file name with VSCode inner variables like ${fileBasename}
             "command": "make -B blah.notool",
             "options": {
-              "cwd": "${workspaceFolder}/cilkprace/race_detection_examples"
+              "cwd": "${workspaceFolder}/../opencilk-project/cilkprace/race_detection_examples"
             },
             "problemMatcher": ["$gcc"],
             "group": {
