@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../opencilk-project"
+		},
+		{
+			"path": "../opencilk-project/cheetah"
+		},
+		{
+			"path": "../opencilk-project/cilktools"
+		}
+	],
+	"settings": {}
+}
