@@ -4,13 +4,16 @@
 			"path": "."
 		},
 		{
-			"path": "../opencilk-project"
+			"path": "../opencilk-project",
+			"name": "opencilk"
 		},
 		{
-			"path": "../opencilk-project/cheetah"
+			"path": "../opencilk-project/cheetah",
+			"name": "cheetah"
 		},
 		{
-			"path": "../opencilk-project/cilktools"
+			"path": "../opencilk-project/cilktools",
+			"name": "cilktools"
 		}
 	],
 	"settings": {}
