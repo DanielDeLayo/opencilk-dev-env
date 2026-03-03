@@ -17,6 +17,6 @@
 		}
 	],
 	"settings": {
-		"clangd.path": "../opencilk/build/bin/clangd"
+		"clangd.path": "../opencilk-project/build/bin/clangd"
 	}
 }
