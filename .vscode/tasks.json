@@ -19,13 +19,27 @@
             "label": "Build Examples",
             "type": "shell",
             // Assign output file name with VSCode inner variables like ${fileBasename}
-            "command": "make -B blah.notool",
+            "command": "make -j -B all",
             "options": {
               "cwd": "${workspaceFolder:cilktools}/cilkprace/race_detection_examples"
             },
             "problemMatcher": ["$gcc"],
             "group": {
                 "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Text Examples",
+            "type": "shell",
+            // Assign output file name with VSCode inner variables like ${fileBasename}
+            "command": "make test",
+            "options": {
+              "cwd": "${workspaceFolder:cilktools}/cilkprace/race_detection_examples"
+            },
+            "problemMatcher": ["$gcc"],
+            "group": {
+                "kind": "test",
                 "isDefault": true
             }
         }

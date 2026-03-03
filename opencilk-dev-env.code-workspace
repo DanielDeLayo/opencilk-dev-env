@@ -17,6 +17,6 @@
 		}
 	],
 	"settings": {
-		"clangd.path": "${workspaceFolder:opencilk}/build/bin/"
+		"clangd.path": "../opencilk/build/bin/clangd"
 	}
 }
