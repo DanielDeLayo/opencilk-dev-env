@@ -30,7 +30,7 @@
             }
         },
         {
-            "label": "Text Examples",
+            "label": "Test Examples",
             "type": "shell",
             // Assign output file name with VSCode inner variables like ${fileBasename}
             "command": "make test",
@@ -38,6 +38,15 @@
               "cwd": "${workspaceFolder:cilktools}/cilkprace/race_detection_examples"
             },
             "problemMatcher": ["$gcc"],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Test Examples And Build",
+            "dependsOn": ["Build Opencilk", "Build Examples", "Test Examples"],
+            "dependsOrder": "sequence",
             "group": {
                 "kind": "test",
                 "isDefault": true
