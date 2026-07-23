@@ -2,14 +2,50 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "CMake Opencilk",
+            "type": "shell",
+            // Assign output file name with VSCode inner variables like ${fileBasename}
+            "command": "${workspaceFolder:opencilk}/../infrastructure/tools/build ${workspaceFolder:opencilk} ${workspaceFolder:opencilk}/build",
+            "options": {
+                "cwd": "${workspaceFolder:opencilk}/build",
+                "env": {
+                    "OPENCILK_RUNTIMES": "cheetah;cilktools;cheetah_debug;cilktools_debug"
+                }
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
             "label": "Build Opencilk",
             "type": "shell",
             // Assign output file name with VSCode inner variables like ${fileBasename}
             "command": "make -j 4",
             "options": {
-              "cwd": "${workspaceFolder:opencilk}/build"
+                "cwd": "${workspaceFolder:opencilk}/build"
             },
-            "problemMatcher": ["$gcc"],
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "CMake Examples",
+            "type": "shell",
+            "command": "${workspaceFolder:cilktools}/cilkprace/race_detection_examples/tools/build.sh -j 4 ${workspaceFolder:opencilk}/build ${workspaceFolder:cilktools}/cilkprace/race_detection_examples/build",
+            "options": {
+                "cwd": "${workspaceFolder:cilktools}/cilkprace/race_detection_examples"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -18,26 +54,43 @@
         {
             "label": "Build Examples",
             "type": "shell",
-            // Assign output file name with VSCode inner variables like ${fileBasename}
-            "command": "make -j -B all",
+            "command": "make -j 4",
             "options": {
-              "cwd": "${workspaceFolder:cilktools}/cilkprace/race_detection_examples"
+                "cwd": "${workspaceFolder:cilktools}/cilkprace/race_detection_examples/build"
             },
-            "problemMatcher": ["$gcc"],
+            "problemMatcher": [
+                "$gcc"
+            ],
             "group": {
                 "kind": "build",
                 "isDefault": true
             }
         },
         {
-            "label": "Test Examples",
+            "label": "Run Timing Tests",
             "type": "shell",
-            // Assign output file name with VSCode inner variables like ${fileBasename}
-            "command": "make test",
+            "command": "make time",
             "options": {
-              "cwd": "${workspaceFolder:cilktools}/cilkprace/race_detection_examples"
+                "cwd": "${workspaceFolder:cilktools}/cilkprace/race_detection_examples/build"
             },
-            "problemMatcher": ["$gcc"],
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Run Cilkprace Timing Tests",
+            "type": "shell",
+            "command": "make cilkprace.time",
+            "options": {
+                "cwd": "${workspaceFolder:cilktools}/cilkprace/race_detection_examples/build"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
             "group": {
                 "kind": "test",
                 "isDefault": true
@@ -45,7 +98,12 @@
         },
         {
             "label": "Test Examples And Build",
-            "dependsOn": ["Build Opencilk", "Build Examples", "Test Examples"],
+            "dependsOn": [
+                "Build Opencilk",
+                "CMake Examples",
+                "Build Examples",
+                "Run Timing Tests"
+            ],
             "dependsOrder": "sequence",
             "group": {
                 "kind": "test",
