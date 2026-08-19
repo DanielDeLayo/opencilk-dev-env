@@ -39,7 +39,7 @@
         {
             "label": "CMake Examples",
             "type": "shell",
-            "command": "${workspaceFolder:cilktools}/cilkprace/race_detection_examples/tools/build.sh -j 4 ${workspaceFolder:opencilk}/build ${workspaceFolder:cilktools}/cilkprace/race_detection_examples/build",
+            "command": "./tools/build.sh -j 4 ${workspaceFolder:opencilk}/build ${workspaceFolder:cilktools}/cilkprace/race_detection_examples/build",
             "options": {
                 "cwd": "${workspaceFolder:cilktools}/cilkprace/race_detection_examples"
             },
@@ -54,7 +54,7 @@
         {
             "label": "Build Examples",
             "type": "shell",
-            "command": "make -j 4",
+            "command": "make -B -j",
             "options": {
                 "cwd": "${workspaceFolder:cilktools}/cilkprace/race_detection_examples/build"
             },
@@ -67,9 +67,9 @@
             }
         },
         {
-            "label": "Run Timing Tests",
+            "label": "Run All Timing Tests",
             "type": "shell",
-            "command": "make time",
+            "command": "make -j 1 time",
             "options": {
                 "cwd": "${workspaceFolder:cilktools}/cilkprace/race_detection_examples/build"
             },
@@ -84,7 +84,7 @@
         {
             "label": "Run Cilkprace Timing Tests",
             "type": "shell",
-            "command": "make cilkprace.time",
+            "command": "make -j 1 cilkprace.time",
             "options": {
                 "cwd": "${workspaceFolder:cilktools}/cilkprace/race_detection_examples/build"
             },
@@ -93,6 +93,19 @@
             ],
             "group": {
                 "kind": "test",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Full Build",
+            "dependsOn": [
+                "Build Opencilk",
+                "CMake Examples",
+                "Build Examples"
+            ],
+            "dependsOrder": "sequence",
+            "group": {
+                "kind": "build",
                 "isDefault": true
             }
         },
