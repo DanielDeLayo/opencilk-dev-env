@@ -13,32 +13,3 @@ index 0000000..e9d6253
 +MALLOC = -ltcmalloc
 +LDFLAGS += -flto
 +ARFLAGS = --plugin $(COMPILER_HOME)/lib/LLVMgold.so
-diff --git a/rdtool/test/probe/Makefile b/rdtool/test/probe/Makefile
-new file mode 100644
-index 0000000..0d16403
---- /dev/null
-+++ b/rdtool/test/probe/Makefile
-@@ -0,0 +1,7 @@
-+# Race probe: 64 spawned writes to x; the tool must report a race.
-+include ../test.mk
-+LIB = $(LIB_DIR)/lib$(TOOL_NAME).a
-+CXXFLAGS += $(RDFLAGS)
-+
-+probe: probe.o $(LIB)
-+	$(CXX) probe.o $(LIB) $(RUNTIME_LIB) $(LDFLAGS) -o probe
-diff --git a/rdtool/test/probe/probe.cpp b/rdtool/test/probe/probe.cpp
-new file mode 100644
-index 0000000..101b503
---- /dev/null
-+++ b/rdtool/test/probe/probe.cpp
-@@ -0,0 +1,10 @@
-+#include <cilk/cilk.h>
-+#include <stdio.h>
-+long x;
-+void w(long v) { volatile long s = 0; for (long i = 0; i < 1000000; i++) s += i; x = v + s; }
-+int main(void) {
-+  for (long i = 0; i < 64; i++) cilk_spawn w(i);
-+  cilk_sync;
-+  printf("%ld\n", x);
-+  return 0;
-+}

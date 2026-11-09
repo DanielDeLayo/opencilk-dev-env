@@ -1,7 +1,7 @@
 #!/bin/bash
 # ours.sh: builds, gates, times and measures our rows (VISCOS, its ablations, Cilksan) on x86-64 Linux.
 #
-#   SRC=/path/to/opencilk-project [WORK=dir] [JOBS=24] ours.sh STAGE...      (STAGE: toolchain rows gate time rss large static summary, or all)
+#   SRC=/path/to/opencilk-project [WORK=dir] [JOBS=24] ours.sh STAGE...      (STAGE: toolchain rows gate time rss large summary, or all)
 #
 # SRC is the source tree that built the paper's VISCOS rows: the unpacked tarball provided with this artifact. That tree was
 # never committed as one; it is the upstream commits below with their patches applied, and contains:
@@ -35,7 +35,6 @@ die() { echo "ours.sh: $*" >&2; exit 1; }
 
 # Rows: NAME TOOL RUNTIME STATIC BFLAGS. RUNTIME is the runtime build below; BFLAGS go to the benchmark compiles only.
 NKSF="-mllvm -cilksan-hoist-nests -mllvm -cilksan-coalesce-blocks -mllvm -cilksan-hoist-symbolic-nests"
-NOHOIST="-mllvm -cilksan-loop-hoisting=false"
 ROWS=(
   "f64-notool none plain true"
   "f64-l128 cilkprace plain true"
@@ -45,9 +44,6 @@ ROWS=(
   "f64ss-l128-NKS-spill cilkprace spill true $NKSF"
   "ab8-csan cilksan plain true"
   "ab8-csan-NKS cilksan plain true $NKSF"
-  "f64-l128-nohoist cilkprace plain true $NOHOIST"
-  "f64ss-l128-nohoist cilkprace ss true $NOHOIST"
-  "f64ss-l128-nostatic cilkprace ss false"
 )
 MAIN="f64-notool f64-l128 f64-l128-NKS f64ss-l128 f64ss-l128-NKS f64ss-l128-NKS-spill ab8-csan ab8-csan-NKS"
 row() {  # row: sets TOOL RT STATIC BFLAGS for row $NAME
@@ -132,11 +128,11 @@ stage_rows() {
 
 # ---- gate: only rows that pass are timed -----------------------------------------------------------------------------------
 # Every benchmark at 4 and 24 workers must exit 0, report no race, print no failure, and print the same answer lines as
-# f64-notool at 4 workers (the ablation rows run with LD_BIND_NOW=1, as they are timed). If TESTS names a directory of race tests (*.cpp), each is also built at -O0 and -O3 for every tool
+# f64-notool at 4 workers. If TESTS names a directory of race tests (*.cpp), each is also built at -O0 and -O3 for every tool
 # row and run at 1 worker: tests named *norace* must report no race, the others must report one.
 answer() {  # answer WORKERS EXE ARGS... -> "status|race|bad|answer lines"
   local out st w=$1; shift
-  out=$(env -i HOME=$HOME PATH=/usr/bin:/bin ${BN:+LD_BIND_NOW=1} CILK_NWORKERS=$w timeout -k 5 3600 setarch x86_64 -R "$@" 2>&1 </dev/null); st=$?
+  out=$(env -i HOME=$HOME PATH=/usr/bin:/bin CILK_NWORKERS=$w timeout -k 5 3600 setarch x86_64 -R "$@" 2>&1 </dev/null); st=$?
   local race=-; grep -qE "RACE|Race detected" <<< "$out" && race=RACE
   local bad=-; grep -qiE "WRONG|FAIL|wrong result|No solution|Invalid" <<< "$out" && bad=BAD
   echo "$st|$race|$bad|$(grep -E "^Result:|Total number of solutions|Sort succeeded" <<< "$out" | tr '\n' ' ')"
@@ -149,7 +145,6 @@ stage_gate() {
   for bb in "${GATE_BENCH[@]}"; do set -- $bb; refs[$bb]=$(answer 4 $V/f64-notool/$1.notool "${@:2}"); done
   for r in "${ROWS[@]}"; do
     set -- $r; NAME=$1; row; s=$(sfx $NAME); ok=1
-    BN=; case $NAME in *nohoist|*nostatic) BN=1 ;; esac  # timed with LD_BIND_NOW=1 (stage_static), so gated with it
     for w in 4 24; do for bb in "${GATE_BENCH[@]}"; do
       set -- $bb; got=$(answer $w $V/$NAME/$1.$s "${@:2}")
       IFS='|' read -r st race bad ans <<< "$got"; IFS='|' read -r _ _ _ rans <<< "${refs[$bb]}"
@@ -210,13 +205,6 @@ times() {  # times OUT NW CPUS SIZE ITERS ROUNDS SEEDS BINDNOW ROWS: one sweep p
 stage_time() {
   times main-w1 1 $CORE default 3 3 "1 2" "" $MAIN
   times main-w24 24 $CPUS24 default 3 3 "1 2" "" $MAIN
-}
-# The static-elision and hoisting ablation is timed with LD_BIND_NOW=1: glibc's lazy PLT resolver can clobber r10 across the
-# label call the instrumentation makes with the PreserveMost convention, and binding at load time avoids it.
-stage_static() {
-  local rows="f64-notool f64-l128 f64-l128-nohoist f64ss-l128-NKS f64ss-l128 f64ss-l128-nohoist f64ss-l128-nostatic"
-  times static-w1 1 $CORE default 3 3 "1 2" 1 $rows
-  times static-w24 24 $CPUS24 default 3 3 "1 2" 1 $rows
 }
 # Large inputs: -i 1, LD_BIND_NOW=1, each run killed after an hour (scored "none").
 stage_large() {
@@ -291,8 +279,8 @@ for n in order:
 EOP
 }
 
-[ $# -gt 0 ] || die "name a stage: toolchain rows gate time rss large static summary, or all"
-[ "$1" = all ] && set -- toolchain rows gate time rss large static summary
+[ $# -gt 0 ] || die "name a stage: toolchain rows gate time rss large summary, or all"
+[ "$1" = all ] && set -- toolchain rows gate time rss large summary
 for s in "$@"; do
-  case $s in toolchain|rows|gate|time|rss|large|static|summary) echo "== $s"; stage_$s ;; *) die "unknown stage $s" ;; esac
+  case $s in toolchain|rows|gate|time|rss|large|summary) echo "== $s"; stage_$s ;; *) die "unknown stage $s" ;; esac
 done

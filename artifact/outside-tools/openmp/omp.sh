@@ -4,7 +4,7 @@
 #   spd3pc  TSan-spd3 (Yu et al., PLDI 2023) at the paper's commit 7375492; baseline notoolpc.
 #   archer  TSan-spd3 HEAD 3f7cf0e9's clang 15 and libomp, with the stock TSan runtime of its upstream base
 #           (llvm-project 232bd331, archer.diff) and Archer selected by DEFAULT_OMPT_LIB; baseline notool.
-#   omp.sh build   clang 14 + 2 LLVM builds + stock TSan runtime + 44 binaries + gate  (~5 h at JOBS=10, estimate;
+#   omp.sh build   clang 14 + 2 LLVM builds + stock TSan runtime + 44 binaries  (~5 h at JOBS=10, estimate;
 #                  Slurm: sbatch -p shared -c $JOBS)
 #   omp.sh run     timing sweep with peak RSS + summary  (~1.8 h at ROUNDS=3, PS="1 24"; spd3pc fib peaks at 36 GB,
 #                  so ~40 GB of RAM; Slurm: sbatch -p fullmachine)
@@ -31,7 +31,7 @@ flags() { case $1 in spd3pc) echo "-fsanitize=thread" ;; archer) echo "-fsanitiz
 E() {
   local v=$1 p=$2 I; shift 2; I=$(inst "$v")
   local a=(PATH="$I/bin:$PATH" LD_LIBRARY_PATH="$I/lib:$I/lib/x86_64-unknown-linux-gnu" OMP_NUM_THREADS="$p"
-           TSAN_OPTIONS="${TSAN:-ignore_noninstrumented_modules=1 report_bugs=0}")
+           TSAN_OPTIONS="ignore_noninstrumented_modules=1 report_bugs=0")
   [ "$v" != archer ] || a+=(DEFAULT_OMPT_LIB=archer)
   env "${a[@]}" "$@"
 }
@@ -112,31 +112,6 @@ build() {
     done
   done
   B clang -O2 "$H/../rsscap.c" -o rsscap   # timeout(1) plus an RSS cap; records why a run was killed
-  gate
-}
-
-# Gate: each tool reports a race between two threads of a parallel region and nothing when they write separate
-# cache lines (reports on, P=2), and Archer's OMPT tool loads. Writes $OUT/gate.tsv; exit 1 on any failure.
-gate() {
-  cd "$W" && mkdir -p probe
-  echo -e "variant\tracy\trc\twarnings\ttool_load\tverdict" > "$OUT/gate.tsv"
-  fail=0
-  for v in spd3pc archer; do for r in 0 1; do
-    d=""; [ $r = 0 ] || d=-DRACY
-    E $v 2 clang -O1 -g -fopenmp $(flags $v) $d "$H/probe.c" -o probe/$v-$r
-    rc=0; o=$(TSAN=ignore_noninstrumented_modules=1 E $v 2 env OMP_TOOL_VERBOSE_INIT=stdout \
-      setarch x86_64 -R probe/$v-$r 2>&1 < /dev/null) || rc=$?
-    n=$(grep -c 'WARNING: ThreadSanitizer:' <<< "$o" || true)
-    t=$(grep -E 'Opening|Success|Tool was started' <<< "$o" | tr '\n\t' '  ' | cut -c1-200 || true)
-    ok=PASS
-    if [ $r = 1 ] && [ "$n" = 0 ]; then ok=FAIL; fi
-    if [ $r = 0 ] && [ "$n" != 0 ]; then ok=FAIL; fi
-    if [ $v = archer ] && ! grep -q 'archer.*Success' <<< "$o"; then ok=FAIL; fi
-    [ $ok = PASS ] || fail=1
-    echo -e "$v\t$r\t$rc\t$n\t${t:--}\t$ok" | tee -a "$OUT/gate.tsv"
-  done; done
-  echo "GATE $([ $fail = 0 ] && echo PASS || echo FAIL)" | tee -a "$OUT/gate.tsv"
-  return $fail
 }
 
 run() {

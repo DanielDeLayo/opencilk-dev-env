@@ -106,7 +106,7 @@ f64-notool binaries from `ours/ours.sh`.
 
 **Changes:**
 - **Config only:** rdtool's `config.mk` takes the README's LTO values, so `RUNTIME_LIB` points at the LTO runtime
-  (`cracer/cracer.diff`, which also adds the race probe the gate uses).
+  (`cracer/cracer.diff`).
 - **Build-environment fixes:**
   - LLVM is configured with `--with-binutils-include=/usr/include` so that LLVMgold.so gets built.
   - A no-op `groff` stub is put on PATH so that `make install` gets past the man page.
@@ -203,7 +203,7 @@ rounds (note f).
 
 **Reproduce:** `openmp/omp.sh` (build, then run) does this row and the Archer row from a clean directory: the clang
 14.0.0 release tarball (sha256 pinned), both TSan-spd3 commits, the stock runtime from `openmp/archer.diff`, the 44
-binaries (notool, notoolpc, spd3pc, archer), a race gate on `openmp/probe.c`, the sweep and a summary. spd3pc peaks at
+binaries (notool, notoolpc, spd3pc, archer), the sweep and a summary. spd3pc peaks at
 36 GB on fib, so it needs about 40 GB of RAM; on a smaller machine `RSSCAP_MB` kills such runs (`rsscap.c`) and the
 summary lists them. It needs git, cmake (3.13.4 or later), ninja, curl, xz, python3, GNU time at `/usr/bin/time`,
 setarch and network access, on PATH.

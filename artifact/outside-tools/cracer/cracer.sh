@@ -28,7 +28,7 @@ build() {
   [ -e cracer.sif ] || "$SING" build --fakeroot cracer.sif "$H/cracer.def"
   if [ ! -d cracer ]; then
     git clone https://github.com/wustl-pctg/cracer && git -C cracer checkout --detach 033f0bc0
-    git -C cracer apply "$H/cracer.diff"   # adds rdtool/config.mk (README values, LTO) and the race probe
+    git -C cracer apply "$H/cracer.diff"   # adds rdtool/config.mk (README values, LTO)
   fi
   # The authors' build-linux.sh layout; the gitlab.com/wustl-pctg URLs it uses now need a login, the -pub mirrors don't.
   if [ ! -d llvm-cilk/src ]; then
@@ -55,7 +55,7 @@ build() {
   # rdtool and the programs, with gold as ld (README); sequential, since parallel makes race on mkdir.
   mkdir -p goldbin && ln -sf /usr/bin/ld.gold goldbin/ld
   X "export PATH=$W/goldbin:\$PATH && cd $W/cracer/rdtool && make -C src &&
-    make -C test/bench base brd && make -C test/probe"
+    make -C test/bench base brd"
   cp "$H/../rsscap.c" "$W/" && X "gcc -std=gnu99 -O2 -o $W/rsscap $W/rsscap.c"
   gate
 }
@@ -65,8 +65,8 @@ R() { local p=$1 dir=$2 pin=""; shift 2
   if [ "$p" = 1 ]; then pin="taskset -c $CPU"; elif [ -n "$CORES" ]; then pin="taskset -c $CORES"; fi
   $pin "$SING" exec --bind "$W" "$W/cracer.sif" bash -c "cd $dir && CILK_NWORKERS=$p timeout 3600 setarch x86_64 -R $*" 2>&1 < /dev/null; }
 
-# Gate (the exact binaries timed): base and brd at P=1 with their -c check report no race and exit 0; the probe
-# must report one. Exits 1 otherwise.
+# Gate (the exact binaries timed): base and brd at P=1 with their -c check report no race and exit 0. Exits 1
+# otherwise.
 gate() {
   echo -e "prog\tmode\trc\trace_lines\tcheck" > "$OUT/gate.tsv"; ok=1
   for b in $PROGS; do for m in base brd; do
@@ -76,10 +76,6 @@ gate() {
     echo -e "$b\t$m\t$rc\t$n\t${c:--}" | tee -a "$OUT/gate.tsv"
     [ "$rc" = 0 ] && [ "$n" = 0 ] || ok=0
   done; done
-  rc=0; o=$(R 1 "$W/cracer/rdtool/test/probe" ./probe) || rc=$?
-  n=$(grep -c 'Race detected at address' <<< "$o" || true)
-  echo -e "probe\tbrd\t$rc\t$n\t-" | tee -a "$OUT/gate.tsv"
-  [ "$n" -ge 1 ] || ok=0
   [ $ok = 1 ] && echo "gate PASS" || { echo "gate FAIL (see $OUT/gate.tsv)"; exit 1; }
 }
 

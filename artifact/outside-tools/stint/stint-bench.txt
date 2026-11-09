@@ -1,10 +1,10 @@
 # The 7 benchmarks of Xu et al., "Efficient Access History for Race Detection" (STINT), ALENEX 2022, Experimental Setup,
 # with the paper's inputs. Base-case sizes (b) are compile-time constants in the artifact's sources, left as shipped.
 # TIMER: own = the program's ktiming timer around the work ("Running time 1:", strassen_z "Elapsed time in second:");
-# probe 242 (P=1, all three builds): own <= wall on every run, the gap being input setup (largest: sort, ~0.9 s).
+# it leaves out input setup, which the wall time includes.
 # heat: nt (time steps) is the artifact default, 100. Neither the paper, the artifact's Makefiles nor its scripts name one (the
-# paper gives nx, ny, b only; b = leafmaxcol defaults to 10); -benchmark presets are not used. Our base is 0.69 s (probe 242)
-# against the paper's 4.36 s, while the STINT ratio matches (4.92x vs the paper's 5.32x). nt was not tuned to match.
+# paper gives nx, ny, b only; b = leafmaxcol defaults to 10); -benchmark presets are not used. nt was not tuned
+# to match the paper's times.
 # NAME|BINARY (benchmarks/{sync,cracer}/BINARY-{ori,rd})|ARGS|paper input|TIMER
 chol|chol|-n 2000 -z 20000|n = 2000, z = 20000, b = 16|own
 sort|cs|-n 25000000|n = 2.5e7, b = 2048|own
