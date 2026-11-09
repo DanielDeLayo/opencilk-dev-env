@@ -1,0 +1,8 @@
+Bootstrap: docker
+From: ubuntu:14.04
+# C-RACER's 2014-2016 toolchain (LLVM 3.4 fork, gcc 4.8, glibc 2.19); python (2.7, as /usr/bin/python, which LLVM 3.4's configure needs); binutils-dev for the gold plugin, tcmalloc per the rdtool README.
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update && apt-get install -y build-essential git python autoconf automake libtool binutils-dev \
+      libgoogle-perftools-dev
+    rm -rf /var/lib/apt/lists/*

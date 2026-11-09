@@ -1,0 +1,1718 @@
+diff --git a/compiler-rt/lib/sanitizer_common/sanitizer_vector.h b/compiler-rt/lib/sanitizer_common/sanitizer_vector.h
+index e1a73fc..31216f3 100644
+--- a/compiler-rt/lib/sanitizer_common/sanitizer_vector.h
++++ b/compiler-rt/lib/sanitizer_common/sanitizer_vector.h
+@@ -88,12 +88,6 @@ class Vector {
+     }
+   }
+ 
+-  T *begin() {return begin_;};
+-  T *end() {return end_;};
+-
+-  void Clear() {
+-    end_ = begin_;
+-  }
+  private:
+   T *begin_;
+   T *end_;
+diff --git a/compiler-rt/lib/tsan/rtl/CMakeLists.txt b/compiler-rt/lib/tsan/rtl/CMakeLists.txt
+index f6b8964..e71268e 100644
+--- a/compiler-rt/lib/tsan/rtl/CMakeLists.txt
++++ b/compiler-rt/lib/tsan/rtl/CMakeLists.txt
+@@ -43,7 +43,6 @@ set(TSAN_SOURCES
+   tsan_symbolize.cpp
+   tsan_sync.cpp
+   tsan_vector_clock.cpp
+-  dpst.cpp
+   )
+ 
+ set(TSAN_CXX_SOURCES
+diff --git a/compiler-rt/lib/tsan/rtl/concurrency_vector.h b/compiler-rt/lib/tsan/rtl/concurrency_vector.h
+deleted file mode 100644
+index cfa6e8b..0000000
+--- a/compiler-rt/lib/tsan/rtl/concurrency_vector.h
++++ /dev/null
+@@ -1,54 +0,0 @@
+-#ifndef CONCURRENCY_VECTOR_H
+-#define CONCURRENCY_VECTOR_H
+-
+-#include "sanitizer_common/sanitizer_allocator_internal.h"
+-#include "sanitizer_common/sanitizer_atomic.h"
+-#include "sanitizer_common/sanitizer_libc.h"
+-#include "data_structure.h"
+-
+-namespace __tsan {
+-class ConcurrencyVector {
+- public:
+-  ConcurrencyVector(int capacity) : begin_(), cap_(capacity), size_({1}) {
+-    if (cap_) {
+-      begin_ = (TreeNode *)InternalAlloc(cap_ * sizeof(TreeNode));
+-      internal_memset(begin_, 0, cap_ * sizeof(TreeNode));
+-    }
+-  }
+-  
+-  ~ConcurrencyVector() {
+-    // if (begin_) {
+-    //   InternalFree(begin_);
+-    // }
+-  }
+-
+-  TreeNode &operator[](uptr i) {
+-    DCHECK_LT(i, Size());
+-    return begin_[i];
+-  }
+-
+-  TreeNode &EmplaceBack(NodeType type, int preceeding_taskwait, Sid sid, Epoch ev, TreeNode *parent) {
+-    int step_index = atomic_fetch_add(&size_, 1, memory_order_relaxed);
+-    if (UNLIKELY (step_index >= cap_)) {
+-      Printf("Concurrency vector reaches its capacity\n");
+-      internal__exit(1);
+-    }
+-    // new (begin_ + step_index) TreeNode(task_id, step_index, type, depth,
+-    //                                    nth_child, preceeding_taskwait,
+-    //                                    parent);
+-    begin_[step_index] = {step_index, type, parent->depth + 1, 0, parent->number_of_child, preceeding_taskwait, sid, ev, parent, nullptr, nullptr, nullptr};
+-    return begin_[step_index];
+-  }
+-
+-  int Size() {
+-    return atomic_load_relaxed(&size_);
+-  }
+- private:
+-  TreeNode *begin_;
+-  int cap_;
+-  atomic_sint32_t size_; // step_id start from 1
+-
+-};
+-
+-} // namespace __tsan
+-#endif // CONCURRENCY_VECTOR_H
+\ No newline at end of file
+diff --git a/compiler-rt/lib/tsan/rtl/data_structure.h b/compiler-rt/lib/tsan/rtl/data_structure.h
+deleted file mode 100644
+index 8347737..0000000
+--- a/compiler-rt/lib/tsan/rtl/data_structure.h
++++ /dev/null
+@@ -1,74 +0,0 @@
+-#ifndef   DATA_STRUCTURE_H
+-#define   DATA_STRUCTURE_H
+-#include "tsan_defs.h"
+-namespace __tsan {
+-enum NodeType {
+-  ROOT,
+-  FINISH,
+-  ASYNC_I,
+-  ASYNC_E,
+-  FUTURE,
+-  STEP,
+-  TASKWAIT,
+-  PARALLEL,
+-  NODE_TYPE_END
+-};
+-
+-typedef struct TreeNode {
+-  int corresponding_id;
+-  NodeType node_type;
+-  int depth;
+-  int number_of_child;
+-  int is_parent_nth_child;
+-  int preceeding_taskwait;
+-  Sid sid;
+-  Epoch ev;
+-  TreeNode *parent;
+-  TreeNode *children_list_head;
+-  TreeNode *children_list_tail;
+-  TreeNode *next_sibling;
+-  // TreeNode() = default;
+-  // TreeNode(int task_id, int step_index, NodeType type, int depth, int nth_child,
+-  //          int preceeding_taskwait, TreeNode *parent)
+-  //     : corresponding_task_id(task_id),
+-  //       corresponding_step_index(step_index),
+-  //       this_node_type(type),
+-  //       depth(depth),
+-  //       number_of_child(0),
+-  //       is_parent_nth_child(nth_child),
+-  //       preceeding_taskwait(preceeding_taskwait),
+-  //       parent(parent),
+-  //       children_list_head(),
+-  //       children_list_tail(),
+-  //       next_sibling(),
+-  //       current_finish_node() {}
+-} TreeNode;
+-
+-
+-// class DPST{
+-//  public:
+-//   TreeNode *root;
+-//   TreeNode *current_step_node;
+-//   DPST() {
+-//     this->root = nullptr;
+-//     this->current_step_node = nullptr;
+-//   }
+-// };
+-
+-// extern struct dpst DPST;
+-
+-// typedef struct finish_t{
+-//     tree_node* node_in_dpst;
+-//     finish_t* parent;
+-// } finish_t;
+-
+-// typedef struct task_t{
+-//   int id;
+-//   int parent_id;
+-//   tree_node* node_in_dpst;
+-//   finish_t* belong_to_finish;
+-//   finish_t* current_finish;
+-// } task_t;
+-
+-} // namespace __tsan
+-#endif
+\ No newline at end of file
+diff --git a/compiler-rt/lib/tsan/rtl/dpst.cpp b/compiler-rt/lib/tsan/rtl/dpst.cpp
+deleted file mode 100644
+index 829ee02..0000000
+--- a/compiler-rt/lib/tsan/rtl/dpst.cpp
++++ /dev/null
+@@ -1,203 +0,0 @@
+-#include "sanitizer_common/sanitizer_internal_defs.h"
+-#include "sanitizer_common/sanitizer_allocator_internal.h"
+-#include "sanitizer_common/sanitizer_vector.h"
+-#include "tsan_rtl.h"
+-#include "concurrency_vector.h"
+-
+-namespace __tsan{
+-
+-extern ConcurrencyVector step_nodes;
+-
+-// dpst root
+-TreeNode dpst_root;
+-
+-static const char* node_desc[] = {"Root", "TaskGroup", "Async_I", "Async_E", "Future", "Step", "TaskWait", "Parallel"};
+-
+-// static int node_index_base = 0;
+-// atomic_uint32_t *atomic_node_index = reinterpret_cast<atomic_uint32_t *>(&node_index_base);
+-
+-// static u32 step_index_base = 1;
+-// atomic_uint32_t *atomic_step_index = reinterpret_cast<atomic_uint32_t *>(&step_index_base);
+-
+-extern "C" {
+-INTERFACE_ATTRIBUTE
+-void __tsan_reset_step_in_tls(){
+-  ThreadState* current_thread = cur_thread();
+-  current_thread->step_id = kNullStepId;
+-}
+-
+-INTERFACE_ATTRIBUTE
+-void __tsan_set_step_in_tls(int step_id){
+-    // Printf("new task node index is %d \n", node->index);
+-  ThreadState* thr = cur_thread();
+-  thr->step_id = step_id;
+-}
+-
+-INTERFACE_ATTRIBUTE
+-TreeNode *__tsan_init_DPST() {
+-  ThreadState *thr = cur_thread();
+-  dpst_root.corresponding_id = 0;
+-  dpst_root.node_type = ASYNC_I;
+-  dpst_root.depth = 0;
+-  dpst_root.number_of_child = 0;
+-  dpst_root.is_parent_nth_child = 0;
+-  dpst_root.preceeding_taskwait = kNullStepId;
+-  dpst_root.sid = thr->fast_state.sid();
+-  dpst_root.ev = thr->fast_state.epoch();
+-  dpst_root.parent = nullptr;
+-  dpst_root.children_list_head = nullptr;
+-  dpst_root.children_list_tail = nullptr;
+-  dpst_root.next_sibling = nullptr;
+-  return &dpst_root;
+-}
+-
+-/**
+- * @brief  Create a new tree node
+- * @note   
+- * @retval The newly created tree node
+- */
+-INTERFACE_ATTRIBUTE
+-TreeNode *__tsan_alloc_internal_node(int internal_node_id, NodeType node_type, TreeNode *parent, int preceeding_taskwait)
+-{
+-  // Allocate memory for new node
+-  // tree_node* node = new tree_node();
+-  TreeNode *node = (TreeNode *)InternalAlloc(sizeof(TreeNode));
+-  node->corresponding_id = internal_node_id;
+-  node->node_type = node_type;
+-  node->depth = parent->depth + 1;
+-  node->number_of_child = 0;
+-  node->is_parent_nth_child = parent->number_of_child;
+-  node->preceeding_taskwait = preceeding_taskwait;
+-  node->parent = parent;
+-  node->children_list_head = nullptr;
+-  node->children_list_tail = nullptr;
+-  node->next_sibling = nullptr;
+-  // Printf("new %p internal id %d, type %d, parent %p\n", node, internal_node_id, node_type, parent);
+-  return node;
+-}
+-
+-
+-/**
+- * @brief  Insert a tree node (not a step node) under parent
+- * @note   
+- * @param  nodeType: root,async,future or finish
+- * @param  *parent: parent node, the inserted node will become a child of parent
+- * @retval the newly inserted node
+- */
+-INTERFACE_ATTRIBUTE
+-TreeNode *__tsan_insert_internal_node(TreeNode *node, TreeNode *parent) {  
+-  parent->number_of_child += 1; 
+-  if (parent->children_list_head) {
+-    parent->children_list_tail->next_sibling = node;
+-    parent->children_list_tail = node;
+-  } else {
+-    parent->children_list_head = node;
+-    parent->children_list_tail = node;
+-  }
+-  return node;
+-}
+-
+-INTERFACE_ATTRIBUTE
+-TreeNode *__tsan_alloc_insert_internal_node(int internal_node_id, NodeType node_type, TreeNode *parent, int preceeding_taskwait) {
+-  TreeNode *node = __tsan_alloc_internal_node(internal_node_id, node_type, parent, preceeding_taskwait);
+-  __tsan_insert_internal_node(node, parent);
+-  return node;
+-}
+-
+-/**
+- * @brief  Insert a new leaf(step) node to the task_node
+- * @note   
+- * @param  *task_node: the node that will have a new leaf
+- * @retval the newly inserted leaf(step) node
+- */
+-INTERFACE_ATTRIBUTE
+-TreeNode *__tsan_insert_leaf(TreeNode *parent, int preceeding_taskwait) {
+-  ThreadState *thr = cur_thread();
+-  TreeNode &n = step_nodes.EmplaceBack(
+-      STEP, preceeding_taskwait,
+-      thr->fast_state.sid(), thr->fast_state.epoch(), parent);
+-  TreeNode *new_step = &n;
+-  parent->number_of_child += 1;
+-
+-  if (parent->children_list_head == nullptr) {
+-    parent->children_list_head = new_step;
+-    parent->children_list_tail = new_step;
+-  } else {
+-    parent->children_list_tail->next_sibling = new_step;
+-    parent->children_list_tail = new_step;
+-  }
+-
+-  // u32 step_index = atomic_load(atomic_step_index, memory_order_acquire);
+-  // atomic_store(atomic_step_index,step_index+1,memory_order_consume);
+-
+-  // new_step->corresponding_step_index = step_index;
+-  // step_nodes[step_index] = new_step;
+-  // Printf("insert into %d\n", step_index);
+-
+-  return new_step;
+-}
+-
+-static void print_node(TreeNode *t) {
+-  constexpr uptr mask = 0xFFFFUL;
+-  Printf("[%s_%lu]", node_desc[t->node_type],
+-         t->corresponding_id ? t->corresponding_id : (uptr)t & mask);
+-  TreeNode *p = t->parent;
+-  if (p) {
+-    Printf("(%s_%lu[%u])", node_desc[p->node_type],
+-           p->corresponding_id ? p->corresponding_id : (uptr)p & mask,
+-           t->is_parent_nth_child);
+-  }
+-}
+-
+-static void get_DPST_statistics(u32 *counts, int &max_depth, bool print_dpst) {
+-  if (print_dpst) {
+-    Printf("DPST Structure: \n");
+-  }
+-  Vector<TreeNode *> v1, v2;
+-  Vector<TreeNode *> *curr = &v1, *next = &v2;
+-  curr->PushBack(&dpst_root);
+-  u32 level = 0;
+-  while (curr->Size()) {
+-    if (print_dpst) {
+-      Printf(" Level %u: ", level);
+-    }
+-    for (TreeNode *t : *curr) {
+-      if (print_dpst) {
+-        print_node(t);
+-        Printf(" ");
+-      }
+-      max_depth = (max_depth < t->depth) ? t->depth : max_depth;
+-      counts[t->node_type]++;
+-      for (TreeNode *c = t->children_list_head; c != nullptr;
+-           c = c->next_sibling) {
+-        next->PushBack(c);
+-      }
+-    }
+-    level++;
+-    Swap(curr, next);
+-    next->Clear();
+-    if (print_dpst) {
+-      Printf("\n");
+-    }
+-  }
+-}
+-
+-INTERFACE_ATTRIBUTE
+-void __tsan_print_DPST_info(bool print_dpst) {
+-  Printf("=============================================================\n");
+-  u32 node_counts[NODE_TYPE_END]{};
+-  int max_depth{};
+-  u32 num_nodes{};
+-  get_DPST_statistics(node_counts, max_depth, print_dpst);
+-  Printf("\nDPST Statistics:\n");
+-  for (u32 i = 0; i < NODE_TYPE_END; i++) {
+-    Printf("%s nodes: %u\n", node_desc[i], node_counts[i]);
+-    num_nodes += node_counts[i];
+-  }
+-  Printf("Total number of nodes: %u\n", num_nodes);
+-  Printf("Max depth: %d\n", max_depth);
+-  Printf("=============================================================\n");
+-}
+-
+-} // extern C
+-} // namespace __tsan
+\ No newline at end of file
+diff --git a/compiler-rt/lib/tsan/rtl/tsan.syms.extra b/compiler-rt/lib/tsan/rtl/tsan.syms.extra
+index d730f78..4838bb0 100644
+--- a/compiler-rt/lib/tsan/rtl/tsan.syms.extra
++++ b/compiler-rt/lib/tsan/rtl/tsan.syms.extra
+@@ -29,12 +29,3 @@ Annotate*
+ WTFAnnotate*
+ RunningOnValgrind
+ ValgrindSlowdown
+-__tsan_print
+-__tsan_init_DPST
+-__tsan_reset_step_in_tls
+-__tsan_set_step_in_tls
+-__tsan_alloc_internal_node
+-__tsan_insert_internal_node
+-__tsan_alloc_insert_internal_node
+-__tsan_insert_leaf
+-__tsan_print_DPST_info
+\ No newline at end of file
+diff --git a/compiler-rt/lib/tsan/rtl/tsan_defs.h b/compiler-rt/lib/tsan/rtl/tsan_defs.h
+index 3ce83e5..1ffa3d6 100644
+--- a/compiler-rt/lib/tsan/rtl/tsan_defs.h
++++ b/compiler-rt/lib/tsan/rtl/tsan_defs.h
+@@ -212,8 +212,6 @@ enum {
+   MutexTypeSlots,
+ };
+ 
+-const int kNullStepId = -1;  // step before the initial task
+-
+ }  // namespace __tsan
+ 
+ #endif  // TSAN_DEFS_H
+diff --git a/compiler-rt/lib/tsan/rtl/tsan_interface_ann.cpp b/compiler-rt/lib/tsan/rtl/tsan_interface_ann.cpp
+index 3dfc5a2..6bd72e1 100644
+--- a/compiler-rt/lib/tsan/rtl/tsan_interface_ann.cpp
++++ b/compiler-rt/lib/tsan/rtl/tsan_interface_ann.cpp
+@@ -209,10 +209,8 @@ void INTERFACE_ATTRIBUTE AnnotateTraceMemory(char *f, int l, uptr mem) {
+ void INTERFACE_ATTRIBUTE AnnotateFlushState(char *f, int l) {
+ }
+ 
+-void INTERFACE_ATTRIBUTE AnnotateNewMemory(const char *f, int l, uptr mem,
++void INTERFACE_ATTRIBUTE AnnotateNewMemory(char *f, int l, uptr mem,
+                                            uptr size) {
+-  SCOPED_ANNOTATION(AnnotateNewMemory);
+-  OnAnnAlloc(thr, pc, mem, size, false);
+ }
+ 
+ void INTERFACE_ATTRIBUTE AnnotateNoOp(char *f, int l, uptr mem) {
+@@ -437,9 +435,4 @@ void __tsan_mutex_post_divert(void *addr, unsigned flagz) {
+   ThreadIgnoreBegin(thr, 0);
+   ThreadIgnoreSyncBegin(thr, 0);
+ }
+-
+-INTERFACE_ATTRIBUTE
+-void __tsan_print() {
+-  Printf("Example of tsan interface (__tsan_print) \n");
+-}
+ }  // extern "C"
+diff --git a/compiler-rt/lib/tsan/rtl/tsan_mman.cpp b/compiler-rt/lib/tsan/rtl/tsan_mman.cpp
+index 3ba886f..0937e52 100644
+--- a/compiler-rt/lib/tsan/rtl/tsan_mman.cpp
++++ b/compiler-rt/lib/tsan/rtl/tsan_mman.cpp
+@@ -261,15 +261,6 @@ void OnUserAlloc(ThreadState *thr, uptr pc, uptr p, uptr sz, bool write) {
+     MemoryResetRange(thr, pc, (uptr)p, sz);
+ }
+ 
+-void OnAnnAlloc(ThreadState *thr, uptr pc, uptr p, uptr sz, bool write) {
+-  DPrintf("#%d: ann_alloc(%zu) = 0x%zx\n", thr->tid, sz, p);
+-  if (write && thr->ignore_reads_and_writes == 0 &&
+-      atomic_load_relaxed(&thr->trace_pos))
+-    MemoryRangeImitateWrite(thr, pc, (uptr)p, sz);
+-  else
+-    MemoryResetRange(thr, pc, (uptr)p, sz);
+-}
+-
+ void OnUserFree(ThreadState *thr, uptr pc, uptr p, bool write) {
+   CHECK_NE(p, (void*)0);
+   if (!thr->slot) {
+diff --git a/compiler-rt/lib/tsan/rtl/tsan_rtl.cpp b/compiler-rt/lib/tsan/rtl/tsan_rtl.cpp
+index af97c3b..b155614 100644
+--- a/compiler-rt/lib/tsan/rtl/tsan_rtl.cpp
++++ b/compiler-rt/lib/tsan/rtl/tsan_rtl.cpp
+@@ -391,7 +391,7 @@ ThreadState::ThreadState(Tid tid)
+     // they may be accessed before the ctor.
+     // ignore_reads_and_writes()
+     // ignore_interceptors()
+-    : tid(tid), step_id(kNullStepId) {
++    : tid(tid) {
+   CHECK_EQ(reinterpret_cast<uptr>(this) % SANITIZER_CACHE_LINE_SIZE, 0);
+ #if !SANITIZER_GO
+   // C/C++ uses fixed size shadow stack.
+diff --git a/compiler-rt/lib/tsan/rtl/tsan_rtl.h b/compiler-rt/lib/tsan/rtl/tsan_rtl.h
+index 8c60f80..c8d3c48 100644
+--- a/compiler-rt/lib/tsan/rtl/tsan_rtl.h
++++ b/compiler-rt/lib/tsan/rtl/tsan_rtl.h
+@@ -47,7 +47,6 @@
+ #include "tsan_sync.h"
+ #include "tsan_trace.h"
+ #include "tsan_vector_clock.h"
+-#include "data_structure.h"
+ 
+ #if SANITIZER_WORDSIZE != 64
+ # error "ThreadSanitizer is supported only on 64-bit platforms"
+@@ -232,8 +231,6 @@ struct ThreadState {
+ 
+   const ReportDesc *current_report;
+ 
+-  int step_id;
+-  
+   explicit ThreadState(Tid tid);
+ } ALIGNED(SANITIZER_CACHE_LINE_SIZE);
+ 
+@@ -461,8 +458,6 @@ bool OutputReport(ThreadState *thr, const ScopedReport &srep);
+ bool IsFiredSuppression(Context *ctx, ReportType type, StackTrace trace);
+ bool IsExpectedReport(uptr addr, uptr size);
+ 
+-void PrintPC(uptr pc);
+-
+ #if defined(TSAN_DEBUG_OUTPUT) && TSAN_DEBUG_OUTPUT >= 1
+ # define DPrintf Printf
+ #else
+@@ -488,8 +483,6 @@ int Finalize(ThreadState *thr);
+ void OnUserAlloc(ThreadState *thr, uptr pc, uptr p, uptr sz, bool write);
+ void OnUserFree(ThreadState *thr, uptr pc, uptr p, bool write);
+ 
+-void OnAnnAlloc(ThreadState *thr, uptr pc, uptr p, uptr sz, bool write);
+-
+ void MemoryAccess(ThreadState *thr, uptr pc, uptr addr, uptr size,
+                   AccessType typ);
+ void UnalignedMemoryAccess(ThreadState *thr, uptr pc, uptr addr, uptr size,
+diff --git a/compiler-rt/lib/tsan/rtl/tsan_rtl_access.cpp b/compiler-rt/lib/tsan/rtl/tsan_rtl_access.cpp
+index 1fe03e6..7d771bf 100644
+--- a/compiler-rt/lib/tsan/rtl/tsan_rtl_access.cpp
++++ b/compiler-rt/lib/tsan/rtl/tsan_rtl_access.cpp
+@@ -12,109 +12,8 @@
+ //===----------------------------------------------------------------------===//
+ 
+ #include "tsan_rtl.h"
+-#include "concurrency_vector.h"
+-namespace __tsan {
+-constexpr u32 vector_fix_size = 200000000;
+-ConcurrencyVector step_nodes(vector_fix_size);
+-
+-// For DPST purpose, we assume shadow_mem[0] stores the last writer
+-// shadow_mem[1] stores the leftmost reader, shadow_mem[2] stores the rightmost reader
+-// constexpr u8 shadow_write_index = 0;
+-// constexpr u8 shadow_leftmost_read_index = 1;
+-// constexpr u8 shadow_rightmost_read_index = 2;
+-
+-// /**
+-//  * @brief check if node a is to the left of node b in dpst
+-//  * @note 
+-//  * @param  a: node a != null
+-//  * @param  b: node b != null
+-//  * @retval true if a is to the left of b; false otherwise
+-//  */
+-// static bool a_to_the_left_of_b(TreeNode *a, TreeNode *b){
+-//   if (a->depth != b->depth) {
+-//     TreeNode *deep_node = (a->depth > b->depth) ? a : b;
+-//     TreeNode *shallow_node = (a->depth > b->depth) ? b : a;
+-//     int diff = deep_node->depth - shallow_node->depth;
+-//     for (int i = 0; i < diff; i++) {
+-//       deep_node = deep_node->parent;
+-//     }
+-//   }
+-
+-//   while (a->parent != b->parent) {
+-//     a = a->parent;
+-//     b = b->parent;
+-//   }
+-//   return a->is_parent_nth_child < b->is_parent_nth_child;
+-// }
+-
+-
+-/**
+- * @brief  Get the current step node, and return its corresponding_id (step id)
+- * @param  thr: current ThreadState*
+- * @retval the corresponding_id of current step node
+- */
+-static int get_current_step_id(ThreadState* thr) {
+-  // TreeNode *current_task_node = thr->current_task_node;
+-
+-  // if(current_task_node == nullptr){
+-  //   return kNullStepId;
+-  // }
+-
+-  // if(current_task_node->current_finish_node == nullptr){
+-  //   return current_task_node->children_list_tail->corresponding_id;
+-  // }
+-
+-  // return current_task_node->current_finish_node->children_list_tail->corresponding_id;
+-  return thr->step_id;
+-}
+-
+-
+-/**
+- * @brief  check if prev precedes curr in dpst
+- * @param  prev: previous step node != null
+- * @param  curr: current step node != null
+- * @param  lca:  output parameter to return the LCA
+- * @parem  left: output parameter to return the left step node
+- * @retval true if prev precdes curr by tree edges 
+- */
+-static bool precede_dpst_new(TreeNode *prev, TreeNode *curr, TreeNode **lca, TreeNode **left) {
+-
+-  if (prev->depth > curr->depth) {
+-    do {
+-      prev = prev->parent;
+-    } while (prev->depth > curr->depth);
+-  } else if (prev->depth < curr->depth) {
+-    do {
+-      curr = curr->parent;
+-    } while (curr->depth > prev->depth);
+-  }
+-  
+-  while (prev->parent != curr->parent) {
+-    prev = prev->parent;
+-    curr = curr->parent;
+-  }
+-
+-  if (lca) {
+-    *lca = curr->parent;
+-  }
+-
+-  if (left) {
+-    *left = (prev->is_parent_nth_child > curr->is_parent_nth_child) ? curr : prev;
+-  }
+-
+-  if (prev->is_parent_nth_child > curr->is_parent_nth_child) {
+-    return false;
+-  }
+-
+-  if ((prev->node_type == ASYNC_I || prev->node_type == ASYNC_E) &&
+-       prev->is_parent_nth_child > curr->preceeding_taskwait) {
+-    return false;
+-  } else {
+-    return true;
+-  }
+-}
+-
+ 
++namespace __tsan {
+ 
+ ALWAYS_INLINE USED bool TryTraceMemoryAccess(ThreadState* thr, uptr pc,
+                                              uptr addr, uptr size,
+@@ -246,58 +145,38 @@ void TraceTime(ThreadState* thr) {
+   TraceEvent(thr, ev);
+ }
+ 
+-// ALWAYS_INLINE RawShadow LoadShadow(RawShadow* p) {
+-//   return static_cast<RawShadow>(
+-//       atomic_load((atomic_uint32_t*)p, memory_order_relaxed));
+-// }
+-
+-// ALWAYS_INLINE void StoreShadow(RawShadow* sp, RawShadow s) {
+-//   atomic_store((atomic_uint32_t*)sp, static_cast<u32>(s), memory_order_relaxed);
+-// }
+-
+-// Shadow Layout for DPST Write|Empty|Read|Read
+-ALWAYS_INLINE u32 LoadWriteShadow(RawShadow *p) {
+-  return atomic_load((atomic_uint32_t *)p, memory_order_relaxed);
+-}
+-
+-ALWAYS_INLINE u64 LoadReadShadow(RawShadow *p) {
+-  return atomic_load((atomic_uint64_t *)(p + 2), memory_order_relaxed);
++ALWAYS_INLINE RawShadow LoadShadow(RawShadow* p) {
++  return static_cast<RawShadow>(
++      atomic_load((atomic_uint32_t*)p, memory_order_relaxed));
+ }
+ 
+-ALWAYS_INLINE void StoreWriteShadow(RawShadow *sp, RawShadow s) {
+-  atomic_store((atomic_uint32_t *)sp, static_cast<u32>(s), memory_order_relaxed);
++ALWAYS_INLINE void StoreShadow(RawShadow* sp, RawShadow s) {
++  atomic_store((atomic_uint32_t*)sp, static_cast<u32>(s), memory_order_relaxed);
+ }
+ 
+-ALWAYS_INLINE void StoreReadShadow(RawShadow *sp, RawShadow sl, RawShadow sr) {
+-  u64 val = (static_cast<u64>(sl) << 32) | static_cast<u64>(sr);
+-  atomic_store((atomic_uint64_t *)(sp + 2), val, memory_order_relaxed);
++NOINLINE void DoReportRace(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
++                           Shadow old,
++                           AccessType typ) SANITIZER_NO_THREAD_SAFETY_ANALYSIS {
++  // For the free shadow markers the first element (that contains kFreeSid)
++  // triggers the race, but the second element contains info about the freeing
++  // thread, take it.
++  if (old.sid() == kFreeSid)
++    old = Shadow(LoadShadow(&shadow_mem[1]));
++  // This prevents trapping on this address in future.
++  for (uptr i = 0; i < kShadowCnt; i++)
++    StoreShadow(&shadow_mem[i], i == 0 ? Shadow::kRodata : Shadow::kEmpty);
++  // See the comment in MemoryRangeFreed as to why the slot is locked
++  // for free memory accesses. ReportRace must not be called with
++  // the slot locked because of the fork. But MemoryRangeFreed is not
++  // called during fork because fork sets ignore_reads_and_writes,
++  // so simply unlocking the slot should be fine.
++  if (typ & kAccessSlotLocked)
++    SlotUnlock(thr);
++  ReportRace(thr, shadow_mem, cur, Shadow(old), typ);
++  if (typ & kAccessSlotLocked)
++    SlotLock(thr);
+ }
+ 
+-// NOINLINE void DoReportRace(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
+-//                            Shadow old,
+-//                            AccessType typ) SANITIZER_NO_THREAD_SAFETY_ANALYSIS {
+-//   // For the free shadow markers the first element (that contains kFreeSid)
+-//   // triggers the race, but the second element contains info about the freeing
+-//   // thread, take it.
+-
+-
+-//   if (old.sid() == kFreeSid)
+-//     old = Shadow(LoadShadow(&shadow_mem[1]));
+-//   // This prevents trapping on this address in future.
+-//   for (uptr i = 0; i < kShadowCnt; i++)
+-//     StoreShadow(&shadow_mem[i], i == 0 ? Shadow::kRodata : Shadow::kEmpty);
+-//   // See the comment in MemoryRangeFreed as to why the slot is locked
+-//   // for free memory accesses. ReportRace must not be called with
+-//   // the slot locked because of the fork. But MemoryRangeFreed is not
+-//   // called during fork because fork sets ignore_reads_and_writes,
+-//   // so simply unlocking the slot should be fine.
+-//   if (typ & kAccessSlotLocked)
+-//     SlotUnlock(thr);
+-//   ReportRace(thr, shadow_mem, cur, Shadow(old), typ);
+-//   if (typ & kAccessSlotLocked)
+-//     SlotLock(thr);
+-// }
+-
+ #if !TSAN_VECTORIZE
+ ALWAYS_INLINE
+ bool ContainsSameAccess(RawShadow* s, Shadow cur, int unused0, int unused1,
+@@ -361,171 +240,174 @@ bool CheckRaces(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
+   return false;
+ }
+ 
+-// #  define LOAD_CURRENT_SHADOW(cur, shadow_mem) UNUSED int access = 0, shadow = 0
++#  define LOAD_CURRENT_SHADOW(cur, shadow_mem) UNUSED int access = 0, shadow = 0
+ 
+ #else /* !TSAN_VECTORIZE */
+ 
+-// ALWAYS_INLINE
+-// bool ContainsSameAccess(RawShadow* unused0, Shadow unused1, m128 shadow,
+-//                         m128 access, AccessType typ) {
+-//   // Note: we could check if there is a larger access of the same type,
+-//   // e.g. we just allocated/memset-ed a block (so it contains 8 byte writes)
+-//   // and now do smaller reads/writes, these can also be considered as "same
+-//   // access". However, it will make the check more expensive, so it's unclear
+-//   // if it's worth it. But this would conserve trace space, so it's useful
+-//   // besides potential speed up.
+-//   if (!(typ & kAccessRead)) {
+-//     const m128 same = _mm_cmpeq_epi32(shadow, access);
+-//     return _mm_movemask_epi8(same);
+-//   }
+-//   // For reads we need to reset read bit in the shadow,
+-//   // because we need to match read with both reads and writes.
+-//   // Shadow::kRodata has only read bit set, so it does what we want.
+-//   // We also abuse it for rodata check to save few cycles
+-//   // since we already loaded Shadow::kRodata into a register.
+-//   // Reads from rodata can't race.
+-//   // Measurements show that they can be 10-20% of all memory accesses.
+-//   // Shadow::kRodata has epoch 0 which cannot appear in shadow normally
+-//   // (thread epochs start from 1). So the same read bit mask
+-//   // serves as rodata indicator.
+-//   const m128 read_mask = _mm_set1_epi32(static_cast<u32>(Shadow::kRodata));
+-//   const m128 masked_shadow = _mm_or_si128(shadow, read_mask);
+-//   m128 same = _mm_cmpeq_epi32(masked_shadow, access);
+-//   // Range memory accesses check Shadow::kRodata before calling this,
+-//   // Shadow::kRodatas is not possible for free memory access
+-//   // and Go does not use Shadow::kRodata.
+-//   if (!(typ & kAccessNoRodata) && !SANITIZER_GO) {
+-//     const m128 ro = _mm_cmpeq_epi32(shadow, read_mask);
+-//     same = _mm_or_si128(ro, same);
+-//   }
+-//   return _mm_movemask_epi8(same);
+-// }
+-
+-// NOINLINE void DoReportRaceV(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
+-//                             u32 race_mask, m128 shadow, AccessType typ) {
+-//   // race_mask points which of the shadow elements raced with the current
+-//   // access. Extract that element.
+-//   CHECK_NE(race_mask, 0);
+-//   u32 old;
+-//   // Note: _mm_extract_epi32 index must be a constant value.
+-//   switch (__builtin_ffs(race_mask) / 4) {
+-//     case 0:
+-//       old = _mm_extract_epi32(shadow, 0);
+-//       break;
+-//     case 1:
+-//       old = _mm_extract_epi32(shadow, 1);
+-//       break;
+-//     case 2:
+-//       old = _mm_extract_epi32(shadow, 2);
+-//       break;
+-//     case 3:
+-//       old = _mm_extract_epi32(shadow, 3);
+-//       break;
+-//   }
+-//   Shadow prev(static_cast<RawShadow>(old));
+-//   // For the free shadow markers the first element (that contains kFreeSid)
+-//   // triggers the race, but the second element contains info about the freeing
+-//   // thread, take it.
+-//   if (prev.sid() == kFreeSid)
+-//     prev = Shadow(static_cast<RawShadow>(_mm_extract_epi32(shadow, 1)));
+-//   DoReportRace(thr, shadow_mem, cur, prev, typ);
+-// }
+-
+-// ALWAYS_INLINE
+-// bool CheckRaces_old(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
+-//                 m128 shadow, m128 access, AccessType typ) {
+-//   // Note: empty/zero slots don't intersect with any access.
+-//   const m128 zero = _mm_setzero_si128();
+-//   const m128 mask_access = _mm_set1_epi32(0x000000ff);
+-//   const m128 mask_sid = _mm_set1_epi32(0x0000ff00);
+-//   const m128 mask_read_atomic = _mm_set1_epi32(0xc0000000);
+-//   const m128 access_and = _mm_and_si128(access, shadow);
+-//   const m128 access_xor = _mm_xor_si128(access, shadow);
+-//   const m128 intersect = _mm_and_si128(access_and, mask_access);
+-//   const m128 not_intersect = _mm_cmpeq_epi32(intersect, zero);
+-//   const m128 not_same_sid = _mm_and_si128(access_xor, mask_sid);
+-//   const m128 same_sid = _mm_cmpeq_epi32(not_same_sid, zero);
+-//   const m128 both_read_or_atomic = _mm_and_si128(access_and, mask_read_atomic);
+-//   const m128 no_race =
+-//       _mm_or_si128(_mm_or_si128(not_intersect, same_sid), both_read_or_atomic);
+-//   const int race_mask = _mm_movemask_epi8(_mm_cmpeq_epi32(no_race, zero));
+-//   if (UNLIKELY(race_mask))
+-//     goto SHARED;
+-
+-// STORE : {
+-//   if (typ & kAccessCheckOnly)
+-//     return false;
+-//   // We could also replace different sid's if access is the same,
+-//   // rw weaker and happens before. However, just checking access below
+-//   // is not enough because we also need to check that !both_read_or_atomic
+-//   // (reads from different sids can be concurrent).
+-//   // Theoretically we could replace smaller accesses with larger accesses,
+-//   // but it's unclear if it's worth doing.
+-//   const m128 mask_access_sid = _mm_set1_epi32(0x0000ffff);
+-//   const m128 not_same_sid_access = _mm_and_si128(access_xor, mask_access_sid);
+-//   const m128 same_sid_access = _mm_cmpeq_epi32(not_same_sid_access, zero);
+-//   const m128 access_read_atomic =
+-//       _mm_set1_epi32((typ & (kAccessRead | kAccessAtomic)) << 30);
+-//   const m128 rw_weaker =
+-//       _mm_cmpeq_epi32(_mm_max_epu32(shadow, access_read_atomic), shadow);
+-//   const m128 rewrite = _mm_and_si128(same_sid_access, rw_weaker);
+-//   const int rewrite_mask = _mm_movemask_epi8(rewrite);
+-//   int index = __builtin_ffs(rewrite_mask);
+-//   if (UNLIKELY(index == 0)) {
+-//     const m128 empty = _mm_cmpeq_epi32(shadow, zero);
+-//     const int empty_mask = _mm_movemask_epi8(empty);
+-//     index = __builtin_ffs(empty_mask);
+-//     if (UNLIKELY(index == 0))
+-//       index = (atomic_load_relaxed(&thr->trace_pos) / 2) % 16;
+-//   }
+-//   StoreShadow(&shadow_mem[index / 4], cur.raw());
+-//   // We could zero other slots determined by rewrite_mask.
+-//   // That would help other threads to evict better slots,
+-//   // but it's unclear if it's worth it.
+-//   return false;
+-// }
++ALWAYS_INLINE
++bool ContainsSameAccess(RawShadow* unused0, Shadow unused1, m128 shadow,
++                        m128 access, AccessType typ) {
++  // Note: we could check if there is a larger access of the same type,
++  // e.g. we just allocated/memset-ed a block (so it contains 8 byte writes)
++  // and now do smaller reads/writes, these can also be considered as "same
++  // access". However, it will make the check more expensive, so it's unclear
++  // if it's worth it. But this would conserve trace space, so it's useful
++  // besides potential speed up.
++  if (!(typ & kAccessRead)) {
++    const m128 same = _mm_cmpeq_epi32(shadow, access);
++    return _mm_movemask_epi8(same);
++  }
++  // For reads we need to reset read bit in the shadow,
++  // because we need to match read with both reads and writes.
++  // Shadow::kRodata has only read bit set, so it does what we want.
++  // We also abuse it for rodata check to save few cycles
++  // since we already loaded Shadow::kRodata into a register.
++  // Reads from rodata can't race.
++  // Measurements show that they can be 10-20% of all memory accesses.
++  // Shadow::kRodata has epoch 0 which cannot appear in shadow normally
++  // (thread epochs start from 1). So the same read bit mask
++  // serves as rodata indicator.
++  const m128 read_mask = _mm_set1_epi32(static_cast<u32>(Shadow::kRodata));
++  const m128 masked_shadow = _mm_or_si128(shadow, read_mask);
++  m128 same = _mm_cmpeq_epi32(masked_shadow, access);
++  // Range memory accesses check Shadow::kRodata before calling this,
++  // Shadow::kRodatas is not possible for free memory access
++  // and Go does not use Shadow::kRodata.
++  if (!(typ & kAccessNoRodata) && !SANITIZER_GO) {
++    const m128 ro = _mm_cmpeq_epi32(shadow, read_mask);
++    same = _mm_or_si128(ro, same);
++  }
++  return _mm_movemask_epi8(same);
++}
++
++NOINLINE void DoReportRaceV(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
++                            u32 race_mask, m128 shadow, AccessType typ) {
++  // race_mask points which of the shadow elements raced with the current
++  // access. Extract that element.
++  CHECK_NE(race_mask, 0);
++  u32 old;
++  // Note: _mm_extract_epi32 index must be a constant value.
++  switch (__builtin_ffs(race_mask) / 4) {
++    case 0:
++      old = _mm_extract_epi32(shadow, 0);
++      break;
++    case 1:
++      old = _mm_extract_epi32(shadow, 1);
++      break;
++    case 2:
++      old = _mm_extract_epi32(shadow, 2);
++      break;
++    case 3:
++      old = _mm_extract_epi32(shadow, 3);
++      break;
++  }
++  Shadow prev(static_cast<RawShadow>(old));
++  // For the free shadow markers the first element (that contains kFreeSid)
++  // triggers the race, but the second element contains info about the freeing
++  // thread, take it.
++  if (prev.sid() == kFreeSid)
++    prev = Shadow(static_cast<RawShadow>(_mm_extract_epi32(shadow, 1)));
++  DoReportRace(thr, shadow_mem, cur, prev, typ);
++}
+ 
+-// SHARED:
+-//   m128 thread_epochs = _mm_set1_epi32(0x7fffffff);
+-//   // Need to unwind this because _mm_extract_epi8/_mm_insert_epi32
+-//   // indexes must be constants.
+-// #  define LOAD_EPOCH(idx)                                                     \
+-//     if (LIKELY(race_mask & (1 << (idx * 4)))) {                               \
+-//       u8 sid = _mm_extract_epi8(shadow, idx * 4 + 1);                         \
+-//       u16 epoch = static_cast<u16>(thr->clock.Get(static_cast<Sid>(sid)));    \
+-//       thread_epochs = _mm_insert_epi32(thread_epochs, u32(epoch) << 16, idx); \
+-//     }
+-//   LOAD_EPOCH(0);
+-//   LOAD_EPOCH(1);
+-//   LOAD_EPOCH(2);
+-//   LOAD_EPOCH(3);
+-// #  undef LOAD_EPOCH
+-//   const m128 mask_epoch = _mm_set1_epi32(0x3fff0000);
+-//   const m128 shadow_epochs = _mm_and_si128(shadow, mask_epoch);
+-//   const m128 concurrent = _mm_cmplt_epi32(thread_epochs, shadow_epochs);
+-//   const int concurrent_mask = _mm_movemask_epi8(concurrent);
+-//   if (LIKELY(concurrent_mask == 0))
+-//     goto STORE;
++ALWAYS_INLINE
++bool CheckRaces(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
++                m128 shadow, m128 access, AccessType typ) {
++  // Note: empty/zero slots don't intersect with any access.
++  const m128 zero = _mm_setzero_si128();
++  const m128 mask_access = _mm_set1_epi32(0x000000ff);
++  const m128 mask_sid = _mm_set1_epi32(0x0000ff00);
++  const m128 mask_read_atomic = _mm_set1_epi32(0xc0000000);
++  const m128 access_and = _mm_and_si128(access, shadow);
++  const m128 access_xor = _mm_xor_si128(access, shadow);
++  const m128 intersect = _mm_and_si128(access_and, mask_access);
++  const m128 not_intersect = _mm_cmpeq_epi32(intersect, zero);
++  const m128 not_same_sid = _mm_and_si128(access_xor, mask_sid);
++  const m128 same_sid = _mm_cmpeq_epi32(not_same_sid, zero);
++  const m128 both_read_or_atomic = _mm_and_si128(access_and, mask_read_atomic);
++  const m128 no_race =
++      _mm_or_si128(_mm_or_si128(not_intersect, same_sid), both_read_or_atomic);
++  const int race_mask = _mm_movemask_epi8(_mm_cmpeq_epi32(no_race, zero));
++  if (UNLIKELY(race_mask))
++    goto SHARED;
++
++STORE : {
++  if (typ & kAccessCheckOnly)
++    return false;
++  // We could also replace different sid's if access is the same,
++  // rw weaker and happens before. However, just checking access below
++  // is not enough because we also need to check that !both_read_or_atomic
++  // (reads from different sids can be concurrent).
++  // Theoretically we could replace smaller accesses with larger accesses,
++  // but it's unclear if it's worth doing.
++  const m128 mask_access_sid = _mm_set1_epi32(0x0000ffff);
++  const m128 not_same_sid_access = _mm_and_si128(access_xor, mask_access_sid);
++  const m128 same_sid_access = _mm_cmpeq_epi32(not_same_sid_access, zero);
++  const m128 access_read_atomic =
++      _mm_set1_epi32((typ & (kAccessRead | kAccessAtomic)) << 30);
++  const m128 rw_weaker =
++      _mm_cmpeq_epi32(_mm_max_epu32(shadow, access_read_atomic), shadow);
++  const m128 rewrite = _mm_and_si128(same_sid_access, rw_weaker);
++  const int rewrite_mask = _mm_movemask_epi8(rewrite);
++  int index = __builtin_ffs(rewrite_mask);
++  if (UNLIKELY(index == 0)) {
++    const m128 empty = _mm_cmpeq_epi32(shadow, zero);
++    const int empty_mask = _mm_movemask_epi8(empty);
++    index = __builtin_ffs(empty_mask);
++    if (UNLIKELY(index == 0))
++      index = (atomic_load_relaxed(&thr->trace_pos) / 2) % 16;
++  }
++  StoreShadow(&shadow_mem[index / 4], cur.raw());
++  // We could zero other slots determined by rewrite_mask.
++  // That would help other threads to evict better slots,
++  // but it's unclear if it's worth it.
++  return false;
++}
+ 
+-//   DoReportRaceV(thr, shadow_mem, cur, concurrent_mask, shadow, typ);
+-//   return true;
+-// }
++SHARED:
++  m128 thread_epochs = _mm_set1_epi32(0x7fffffff);
++  // Need to unwind this because _mm_extract_epi8/_mm_insert_epi32
++  // indexes must be constants.
++#  define LOAD_EPOCH(idx)                                                     \
++    if (LIKELY(race_mask & (1 << (idx * 4)))) {                               \
++      u8 sid = _mm_extract_epi8(shadow, idx * 4 + 1);                         \
++      u16 epoch = static_cast<u16>(thr->clock.Get(static_cast<Sid>(sid)));    \
++      thread_epochs = _mm_insert_epi32(thread_epochs, u32(epoch) << 16, idx); \
++    }
++  LOAD_EPOCH(0);
++  LOAD_EPOCH(1);
++  LOAD_EPOCH(2);
++  LOAD_EPOCH(3);
++#  undef LOAD_EPOCH
++  const m128 mask_epoch = _mm_set1_epi32(0x3fff0000);
++  const m128 shadow_epochs = _mm_and_si128(shadow, mask_epoch);
++  const m128 concurrent = _mm_cmplt_epi32(thread_epochs, shadow_epochs);
++  const int concurrent_mask = _mm_movemask_epi8(concurrent);
++  if (LIKELY(concurrent_mask == 0))
++    goto STORE;
++
++  DoReportRaceV(thr, shadow_mem, cur, concurrent_mask, shadow, typ);
++  return true;
++}
+ 
++#  define LOAD_CURRENT_SHADOW(cur, shadow_mem)                         \
++    const m128 access = _mm_set1_epi32(static_cast<u32>((cur).raw())); \
++    const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem))
+ #endif
+ 
+-// char* DumpShadow(char* buf, RawShadow raw) {
+-//   if (raw == Shadow::kEmpty) {
+-//     internal_snprintf(buf, 64, "0");
+-//     return buf;
+-//   }
+-//   Shadow s(raw);
+-//   AccessType typ;
+-//   s.GetAccess(nullptr, nullptr, &typ);
+-//   internal_snprintf(buf, 64, "{tid=%u@%u access=0x%x typ=%x}",
+-//                     static_cast<u32>(s.sid()), static_cast<u32>(s.epoch()),
+-//                     s.access(), static_cast<u32>(typ));
+-//   return buf;
+-// }
++char* DumpShadow(char* buf, RawShadow raw) {
++  if (raw == Shadow::kEmpty) {
++    internal_snprintf(buf, 64, "0");
++    return buf;
++  }
++  Shadow s(raw);
++  AccessType typ;
++  s.GetAccess(nullptr, nullptr, &typ);
++  internal_snprintf(buf, 64, "{tid=%u@%u access=0x%x typ=%x}",
++                    static_cast<u32>(s.sid()), static_cast<u32>(s.epoch()),
++                    s.access(), static_cast<u32>(typ));
++  return buf;
++}
+ 
+ // TryTrace* and TraceRestart* functions allow to turn memory access and func
+ // entry/exit callbacks into leaf functions with all associated performance
+@@ -544,206 +426,31 @@ NOINLINE void TraceRestartMemoryAccess(ThreadState* thr, uptr pc, uptr addr,
+   MemoryAccess(thr, pc, addr, size, typ);
+ }
+ 
+-enum RaceType {
+-  WriteWriteRace = 0,
+-  WriteReadRace  = 1,
+-  ReadWriteRace  = 2,
+-  AccessFreedMem = 4
+-};
+-
+-// static const char* kRaceTypeName[] = {"write-write-race", "write-read-race",
+-//                                       "read-write-race", "", "use-after-free"};
+-
+-NOINLINE void DoReportRaceDPST(ThreadState *thr, RawShadow* shadow_mem, Shadow cur, Shadow prev, RaceType race_type, AccessType typ, uptr addr, uptr pc) {
+-  if (!flags()->report_bugs || thr->suppress_reports) {
+-    return;
+-  }
+-  if ((prev.is_atomic() && cur.is_atomic()) || !(prev.access_mask() & cur.access_mask())) {
+-    return;
+-  }
+-
+-  u32 curr_step_id = cur.step_id();
+-  u32 prev_step_id = prev.step_id();
+-  const TreeNode &curr_step = step_nodes[curr_step_id];
+-  const TreeNode &prev_step = step_nodes[prev_step_id];
+-  u8 rt_val = static_cast<u8>(race_type);
+-  
+-  //u8 access, Sid sid, u16 epoch, bool is_read, bool is_atomic
+-  Shadow prev_tsan(prev.ConvertMaskToAccess(), prev_step.sid, prev_step.ev, rt_val & 0x2, prev.is_atomic());
+-  Shadow cur_tsan(cur.ConvertMaskToAccess(), curr_step.sid, curr_step.ev, typ & kAccessRead, typ & kAccessAtomic);
+-  //Printf("Error type: %s at %016lx, Prev step: %u, Curr step: %u\n", kRaceTypeName[race_type], addr, prev_step_id, curr_step_id);
+-  ReportRace(thr, shadow_mem, cur_tsan, prev_tsan, typ);
+-  // PrintPC(pc);
+-}
+-
+-// #  define LOAD_CURRENT_SHADOW(cur, shadow_mem)                         \
+-//     const m128 access = _mm_set1_epi32(static_cast<u32>((cur).raw())); \
+-//     const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem))
+-
+-
+-ALWAYS_INLINE
+-bool CheckWrite(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
+-                AccessType typ, uptr addr, uptr pc) {
+-  u32 curr_step_id = cur.step_id();
+-  u32 prev_write = LoadWriteShadow(shadow_mem);
+-  Shadow w(static_cast<RawShadow>(prev_write));
+-  
+-  if (w.is_freed()) {
+-    DoReportRaceDPST(thr, shadow_mem, cur, w, AccessFreedMem, typ, addr, pc);
+-    return true;
+-  }
+-  //Printf("%u Write %p\n", curr_step_id, addr);
+-  if (curr_step_id == w.step_id()) {
+-    return false;
+-  }
+-  
+-  TreeNode *curr_step = &step_nodes[curr_step_id];
+-  if (w.raw() != Shadow::kEmpty &&
+-      !precede_dpst_new(&step_nodes[w.step_id()],
+-                        curr_step, nullptr, nullptr)) {
+-    DoReportRaceDPST(thr, shadow_mem, cur, w, WriteWriteRace, typ, addr, pc);
+-    return true;
+-  }
+-
+-  u64 prev_reads = LoadReadShadow(shadow_mem);
+-  Shadow r1(static_cast<RawShadow>(static_cast<u32>(prev_reads >> 32)));
+-  Shadow r2(static_cast<RawShadow>(static_cast<u32>(prev_reads)));
+-  if (r1.raw() != Shadow::kEmpty &&
+-      !precede_dpst_new(&step_nodes[r1.step_id()],
+-                        curr_step, nullptr, nullptr)) {
+-    DoReportRaceDPST(thr, shadow_mem, cur, r1, ReadWriteRace, typ, addr, pc);
+-    return true;
+-  }
+-
+-  if (r2.raw() != Shadow::kEmpty &&
+-      !precede_dpst_new(&step_nodes[r2.step_id()],
+-                        curr_step, nullptr, nullptr)) {
+-    DoReportRaceDPST(thr, shadow_mem, cur, r2, ReadWriteRace, typ, addr, pc);
+-    return true;
+-  }
+-
+-  if (!(typ & kAccessCheckOnly)){
+-    StoreWriteShadow(shadow_mem, cur.raw());
+-    StoreReadShadow(shadow_mem, Shadow::kEmpty, Shadow::kEmpty);
+-  }
+-  return false;
+-}
+-
+-ALWAYS_INLINE
+-bool CheckRead(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
+-               AccessType typ, uptr addr, uptr pc) {
+-  u32 curr_step_id = cur.step_id();
+-  u32 prev_write = LoadWriteShadow(shadow_mem);
+-  Shadow w(static_cast<RawShadow>(prev_write));
+-
+-  if (w.is_freed()) {
+-    DoReportRaceDPST(thr, shadow_mem, cur, w, AccessFreedMem, typ, addr, pc);
+-    return true;
+-  }
+-  //Printf("%u Read %p\n", curr_step_id, addr);
+-  u64 prev_reads = LoadReadShadow(shadow_mem);
+-  Shadow r1(static_cast<RawShadow>(static_cast<u32>(prev_reads >> 32)));
+-  Shadow r2(static_cast<RawShadow>(static_cast<u32>(prev_reads)));
+-  if (curr_step_id == r1.step_id() ||
+-      curr_step_id == r2.step_id()) {
+-    return false;
+-  }
+-
+-  TreeNode *curr_step = &step_nodes[curr_step_id];
+-
+-  if (w.raw() != Shadow::kEmpty &&
+-      !precede_dpst_new(&step_nodes[w.step_id()],
+-                        curr_step, nullptr, nullptr)) {
+-    DoReportRaceDPST(thr, shadow_mem, cur, w, WriteReadRace, typ, addr, pc);
+-    return true;
+-  }
+-  
+-  if (!(typ & kAccessCheckOnly)) {
+-    u8 not_empty_reads =
+-        (r1.raw() != Shadow::kEmpty) + (r2.raw() != Shadow::kEmpty);
+-    if (not_empty_reads == 0) {
+-      StoreReadShadow(shadow_mem, cur.raw(), Shadow::kEmpty);
+-    } else if (not_empty_reads == 1) {
+-      if (precede_dpst_new(&step_nodes[r1.step_id()], curr_step, nullptr,
+-                           nullptr)) {
+-        StoreReadShadow(shadow_mem, cur.raw(), Shadow::kEmpty);
+-      } else {
+-        StoreReadShadow(shadow_mem, r1.raw(), cur.raw());
+-      }
+-    } else {
+-      TreeNode* r1_step = &step_nodes[r1.step_id()];
+-      TreeNode* r2_step = &step_nodes[r2.step_id()];
+-      TreeNode *lca1, *lca2, *left1, *left2;
+-      bool hb1 = precede_dpst_new(r1_step, curr_step, &lca1, &left1);
+-      bool hb2 = precede_dpst_new(r2_step, curr_step, &lca2, &left2);
+-      if (hb1 && hb2) {
+-        StoreReadShadow(shadow_mem, cur.raw(), Shadow::kEmpty);
+-      }
+-      if (!(hb1 || hb2) && (left1 == left2)) {
+-        StoreReadShadow(shadow_mem, cur.raw(), r2.raw());
+-      }
+-    }
+-  }
+-
+-  return false;
+-}
+-
+ ALWAYS_INLINE USED void MemoryAccess(ThreadState* thr, uptr pc, uptr addr,
+                                      uptr size, AccessType typ) {
+-  int curr_step_id = get_current_step_id(thr);
+-  if (curr_step_id == kNullStepId) {
+-    return;
+-  }
+   RawShadow* shadow_mem = MemToShadow(addr);
++  UNUSED char memBuf[4][64];
++  DPrintf2("#%d: Access: %d@%d %p/%zd typ=0x%x {%s, %s, %s, %s}\n", thr->tid,
++           static_cast<int>(thr->fast_state.sid()),
++           static_cast<int>(thr->fast_state.epoch()), (void*)addr, size,
++           static_cast<int>(typ), DumpShadow(memBuf[0], shadow_mem[0]),
++           DumpShadow(memBuf[1], shadow_mem[1]),
++           DumpShadow(memBuf[2], shadow_mem[2]),
++           DumpShadow(memBuf[3], shadow_mem[3]));
++
+   FastState fast_state = thr->fast_state;
++  Shadow cur(fast_state, addr, size, typ);
+ 
+-  if (UNLIKELY(fast_state.GetIgnoreBit()))
++  LOAD_CURRENT_SHADOW(cur, shadow_mem);
++  if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
+     return;
+-
+-  Shadow cur(typ & kAccessAtomic, typ & kAccessFree, addr, size, curr_step_id);
+-
+-  if (UNLIKELY(static_cast<RawShadow>(LoadWriteShadow(shadow_mem)) == Shadow::kRodata)) {
++  if (UNLIKELY(fast_state.GetIgnoreBit()))
+     return;
+-  }
+-
+-  // TODO: decide if we want to use the following if statement
+   if (!TryTraceMemoryAccess(thr, pc, addr, size, typ))
+     return TraceRestartMemoryAccess(thr, pc, addr, size, typ);
+-  // Printf("addr = %p, shadow = %p, size = %lu\n", (char *)addr, shadow_mem, size);
+-  if (typ & kAccessRead) {
+-    CheckRead(thr, shadow_mem, cur, typ, addr, pc);
+-  } else {
+-    CheckWrite(thr, shadow_mem, cur, typ, addr, pc);
+-  }
+-  return;
++  CheckRaces(thr, shadow_mem, cur, shadow, access, typ);
+ }
+ 
+-// ALWAYS_INLINE USED void MemoryAccess_old(ThreadState* thr, uptr pc, uptr addr,
+-//                                      uptr size, AccessType typ) {
+-//   RawShadow* shadow_mem = MemToShadow(addr);
+-//   UNUSED char memBuf[4][64];
+-//   DPrintf2("#%d: Access: %d@%d %p/%zd typ=0x%x {%s, %s, %s, %s}\n", thr->tid,
+-//            static_cast<int>(thr->fast_state.sid()),
+-//            static_cast<int>(thr->fast_state.epoch()), (void*)addr, size,
+-//            static_cast<int>(typ), DumpShadow(memBuf[0], shadow_mem[0]),
+-//            DumpShadow(memBuf[1], shadow_mem[1]),
+-//            DumpShadow(memBuf[2], shadow_mem[2]),
+-//            DumpShadow(memBuf[3], shadow_mem[3]));
+-
+-//   FastState fast_state = thr->fast_state;
+-//   // Shadow cur(fast_state, addr, size, typ);
+-//   Shadow cur(fast_state, get_current_step_id(thr), addr, size, typ);
+-
+-//   LOAD_CURRENT_SHADOW(cur, shadow_mem);
+-//   if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
+-//     return;
+-//   if (UNLIKELY(fast_state.GetIgnoreBit()))
+-//     return;
+-//   if (!TryTraceMemoryAccess(thr, pc, addr, size, typ))
+-//     return TraceRestartMemoryAccess(thr, pc, addr, size, typ);
+-//   CheckRaces_old(thr, shadow_mem, cur, shadow, access, typ);
+-// }
+-
+ void MemoryAccess16(ThreadState* thr, uptr pc, uptr addr, AccessType typ);
+ 
+ NOINLINE
+@@ -755,33 +462,31 @@ void RestartMemoryAccess16(ThreadState* thr, uptr pc, uptr addr,
+ 
+ ALWAYS_INLINE USED void MemoryAccess16(ThreadState* thr, uptr pc, uptr addr,
+                                        AccessType typ) {
+-  int curr_step_id = get_current_step_id(thr);
+-  if (curr_step_id == kNullStepId) {
+-    return;
+-  }
++  const uptr size = 16;
+   FastState fast_state = thr->fast_state;
+   if (UNLIKELY(fast_state.GetIgnoreBit()))
+     return;
+-  Shadow cur(typ & kAccessAtomic, false, 0, 8, curr_step_id);
++  Shadow cur(fast_state, 0, 8, typ);
+   RawShadow* shadow_mem = MemToShadow(addr);
+-  
+-  if (UNLIKELY(static_cast<RawShadow>(LoadWriteShadow(shadow_mem)) == Shadow::kRodata)) {
+-    return;
+-  }
+-
+-  if (typ & kAccessRead) {
+-    if (UNLIKELY(CheckRead(thr, shadow_mem, cur, typ, addr, pc))) {
++  bool traced = false;
++  {
++    LOAD_CURRENT_SHADOW(cur, shadow_mem);
++    if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
++      goto SECOND;
++    if (!TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
++      return RestartMemoryAccess16(thr, pc, addr, typ);
++    traced = true;
++    if (UNLIKELY(CheckRaces(thr, shadow_mem, cur, shadow, access, typ)))
+       return;
+-    }
+-    shadow_mem += kShadowCnt;
+-    CheckRead(thr, shadow_mem, cur, typ, addr + kShadowCell,  pc);
+-  } else {
+-    if (UNLIKELY(CheckWrite(thr, shadow_mem, cur, typ, addr, pc))) {
+-      return;
+-    }
+-    shadow_mem += kShadowCnt;
+-    CheckWrite(thr, shadow_mem, cur, typ, addr + kShadowCell, pc);
+   }
++SECOND:
++  shadow_mem += kShadowCnt;
++  LOAD_CURRENT_SHADOW(cur, shadow_mem);
++  if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
++    return;
++  if (!traced && !TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
++    return RestartMemoryAccess16(thr, pc, addr, typ);
++  CheckRaces(thr, shadow_mem, cur, shadow, access, typ);
+ }
+ 
+ NOINLINE
+@@ -794,49 +499,36 @@ void RestartUnalignedMemoryAccess(ThreadState* thr, uptr pc, uptr addr,
+ ALWAYS_INLINE USED void UnalignedMemoryAccess(ThreadState* thr, uptr pc,
+                                               uptr addr, uptr size,
+                                               AccessType typ) {
+-  int curr_step_id = get_current_step_id(thr);
+-  if (curr_step_id == kNullStepId) {
+-    return;
+-  }
+   DCHECK_LE(size, 8);
+   FastState fast_state = thr->fast_state;
+   if (UNLIKELY(fast_state.GetIgnoreBit()))
+     return;
+   RawShadow* shadow_mem = MemToShadow(addr);
+-
+-  if (UNLIKELY(static_cast<RawShadow>(LoadWriteShadow(shadow_mem)) == Shadow::kRodata)) {
+-    return;
+-  }
+-
++  bool traced = false;
+   uptr size1 = Min<uptr>(size, RoundUp(addr + 1, kShadowCell) - addr);
+-  Shadow cur(typ & kAccessAtomic, false, addr, size1, curr_step_id);
+-  if (!TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
+-    return RestartUnalignedMemoryAccess(thr, pc, addr, size, typ);
+-  if (typ & kAccessRead) {
+-    if (UNLIKELY(CheckRead(thr, shadow_mem, cur, typ, addr, pc))) {
+-      return;
+-    }
+-    uptr size2 = size - size1;
+-    if (LIKELY(size2 == 0)) {
+-      return;
+-    }
+-    addr = RoundUp(addr + 1, kShadowCell);
+-    shadow_mem += kShadowCnt;
+-    Shadow cur_next(typ & kAccessAtomic, false, 0, size2, curr_step_id);
+-    CheckRead(thr, shadow_mem, cur_next, typ, addr, pc);
+-  } else {
+-    if (UNLIKELY(CheckWrite(thr, shadow_mem, cur, typ, addr, pc))) {
++  {
++    Shadow cur(fast_state, addr, size1, typ);
++    LOAD_CURRENT_SHADOW(cur, shadow_mem);
++    if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
++      goto SECOND;
++    if (!TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
++      return RestartUnalignedMemoryAccess(thr, pc, addr, size, typ);
++    traced = true;
++    if (UNLIKELY(CheckRaces(thr, shadow_mem, cur, shadow, access, typ)))
+       return;
+-    }
+-    uptr size2 = size - size1;
+-    if (LIKELY(size2 == 0)) {
+-      return;
+-    }
+-    addr = RoundUp(addr + 1, kShadowCell);
+-    shadow_mem += kShadowCnt;
+-    Shadow cur_next(typ & kAccessAtomic, false, 0, size2, curr_step_id);
+-    CheckWrite(thr, shadow_mem, cur_next, typ, addr, pc);
+   }
++SECOND:
++  uptr size2 = size - size1;
++  if (LIKELY(size2 == 0))
++    return;
++  shadow_mem += kShadowCnt;
++  Shadow cur(fast_state, 0, size2, typ);
++  LOAD_CURRENT_SHADOW(cur, shadow_mem);
++  if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
++    return;
++  if (!traced && !TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
++    return RestartUnalignedMemoryAccess(thr, pc, addr, size, typ);
++  CheckRaces(thr, shadow_mem, cur, shadow, access, typ);
+ }
+ 
+ void ShadowSet(RawShadow* p, RawShadow* end, RawShadow v) {
+@@ -846,10 +538,19 @@ void ShadowSet(RawShadow* p, RawShadow* end, RawShadow v) {
+   UNUSED const uptr kAlign = kShadowCnt * kShadowSize;
+   DCHECK_EQ(reinterpret_cast<uptr>(p) % kAlign, 0);
+   DCHECK_EQ(reinterpret_cast<uptr>(end) % kAlign, 0);
++#if !TSAN_VECTORIZE
+   for (; p < end; p += kShadowCnt) {
+-    StoreWriteShadow(p, v);
+-    StoreReadShadow(p, Shadow::kEmpty, Shadow::kEmpty);
+-  }
++    p[0] = v;
++    for (uptr i = 1; i < kShadowCnt; i++) p[i] = Shadow::kEmpty;
++  }
++#else
++  m128 vv = _mm_setr_epi32(
++      static_cast<u32>(v), static_cast<u32>(Shadow::kEmpty),
++      static_cast<u32>(Shadow::kEmpty), static_cast<u32>(Shadow::kEmpty));
++  m128* vp = reinterpret_cast<m128*>(p);
++  m128* vend = reinterpret_cast<m128*>(end);
++  for (; vp < vend; vp++) _mm_store_si128(vp, vv);
++#endif
+ }
+ 
+ static void MemoryRangeSet(uptr addr, uptr size, RawShadow val) {
+@@ -903,10 +604,6 @@ void MemoryRangeFreed(ThreadState* thr, uptr pc, uptr addr, uptr size) {
+   // if it happens to match a real free in the thread trace,
+   // but the heap block was reallocated before the current memory access,
+   // so it's still good to access. It's not the case with data races.
+-  int curr_step_id = get_current_step_id(thr);
+-  if (curr_step_id == kNullStepId) {
+-    return;
+-  }
+   DCHECK(thr->slot_locked);
+   DCHECK_EQ(addr % kShadowCell, 0);
+   size = RoundUp(size, kShadowCell);
+@@ -914,26 +611,39 @@ void MemoryRangeFreed(ThreadState* thr, uptr pc, uptr addr, uptr size) {
+   // can cause excessive memory consumption (user does not necessary touch
+   // the whole range) and most likely unnecessary.
+   size = Min<uptr>(size, 1024);
+-  const AccessType typ = kAccessWrite | kAccessFree | kAccessSlotLocked | kAccessNoRodata;
++  const AccessType typ = kAccessWrite | kAccessFree | kAccessSlotLocked |
++                         kAccessCheckOnly | kAccessNoRodata;
+   TraceMemoryAccessRange(thr, pc, addr, size, typ);
+   RawShadow* shadow_mem = MemToShadow(addr);
+-  uptr address = addr;
+-  Shadow cur(false, true, 0, kShadowCell, curr_step_id);
+-  for (; size; size -= kShadowCell, shadow_mem += kShadowCnt, address += kShadowCell) {
+-    if (UNLIKELY(CheckWrite(thr, shadow_mem, cur, typ, address, pc)))
++  Shadow cur(thr->fast_state, 0, kShadowCell, typ);
++#if TSAN_VECTORIZE
++  const m128 access = _mm_set1_epi32(static_cast<u32>(cur.raw()));
++  const m128 freed = _mm_setr_epi32(
++      static_cast<u32>(Shadow::FreedMarker()),
++      static_cast<u32>(Shadow::FreedInfo(cur.sid(), cur.epoch())), 0, 0);
++  for (; size; size -= kShadowCell, shadow_mem += kShadowCnt) {
++    const m128 shadow = _mm_load_si128((m128*)shadow_mem);
++    if (UNLIKELY(CheckRaces(thr, shadow_mem, cur, shadow, access, typ)))
+       return;
++    _mm_store_si128((m128*)shadow_mem, freed);
+   }
++#else
++  for (; size; size -= kShadowCell, shadow_mem += kShadowCnt) {
++    if (UNLIKELY(CheckRaces(thr, shadow_mem, cur, 0, 0, typ)))
++      return;
++    StoreShadow(&shadow_mem[0], Shadow::FreedMarker());
++    StoreShadow(&shadow_mem[1], Shadow::FreedInfo(cur.sid(), cur.epoch()));
++    StoreShadow(&shadow_mem[2], Shadow::kEmpty);
++    StoreShadow(&shadow_mem[3], Shadow::kEmpty);
++  }
++#endif
+ }
+ 
+ void MemoryRangeImitateWrite(ThreadState* thr, uptr pc, uptr addr, uptr size) {
+-  int curr_step_id = get_current_step_id(thr);
+-  if (curr_step_id == kNullStepId) {
+-    return;
+-  }
+   DCHECK_EQ(addr % kShadowCell, 0);
+   size = RoundUp(size, kShadowCell);
+   TraceMemoryAccessRange(thr, pc, addr, size, kAccessWrite);
+-  Shadow cur(false, false, 0, kShadowCell, curr_step_id);
++  Shadow cur(thr->fast_state, 0, 8, kAccessWrite);
+   MemoryRangeSet(addr, size, cur.raw());
+ }
+ 
+@@ -947,16 +657,11 @@ void MemoryRangeImitateWriteOrResetRange(ThreadState* thr, uptr pc, uptr addr,
+ 
+ ALWAYS_INLINE
+ bool MemoryAccessRangeOne(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
+-                          AccessType typ, uptr pc, uptr addr) {
+-
+-  if (UNLIKELY(static_cast<RawShadow>(LoadWriteShadow(shadow_mem)) == Shadow::kRodata)) {
++                          AccessType typ) {
++  LOAD_CURRENT_SHADOW(cur, shadow_mem);
++  if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
+     return false;
+-  }
+-  if (typ & kAccessRead) {
+-    return CheckRead(thr, shadow_mem, cur, typ, addr, pc);
+-  } else {
+-    return CheckWrite(thr, shadow_mem, cur, typ, addr, pc);
+-  }
++  return CheckRaces(thr, shadow_mem, cur, shadow, access, typ);
+ }
+ 
+ template <bool is_read>
+@@ -968,10 +673,6 @@ NOINLINE void RestartMemoryAccessRange(ThreadState* thr, uptr pc, uptr addr,
+ 
+ template <bool is_read>
+ void MemoryAccessRangeT(ThreadState* thr, uptr pc, uptr addr, uptr size) {
+-  int curr_step_id = get_current_step_id(thr);
+-  if (curr_step_id == kNullStepId) {
+-    return;
+-  }
+   const AccessType typ =
+       (is_read ? kAccessRead : kAccessWrite) | kAccessNoRodata;
+   RawShadow* shadow_mem = MemToShadow(addr);
+@@ -1016,27 +717,25 @@ void MemoryAccessRangeT(ThreadState* thr, uptr pc, uptr addr, uptr size) {
+   if (!TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
+     return RestartMemoryAccessRange<is_read>(thr, pc, addr, size);
+ 
+-  uptr address = addr;
+   if (UNLIKELY(addr % kShadowCell)) {
+     // Handle unaligned beginning, if any.
+     uptr size1 = Min(size, RoundUp(addr, kShadowCell) - addr);
+-    Shadow cur(false, false, addr, size1, curr_step_id);
+     size -= size1;
+-    if (UNLIKELY(MemoryAccessRangeOne(thr, shadow_mem, cur, typ, addr, pc)))
++    Shadow cur(fast_state, addr, size1, typ);
++    if (UNLIKELY(MemoryAccessRangeOne(thr, shadow_mem, cur, typ)))
+       return;
+     shadow_mem += kShadowCnt;
+-    address += size1;
+   }
+   // Handle middle part, if any.
+-  Shadow cur(false, false, 0, kShadowCell, curr_step_id);
+-  for (; size >= kShadowCell; size -= kShadowCell, shadow_mem += kShadowCnt, address += kShadowCell) {
+-    if (UNLIKELY(MemoryAccessRangeOne(thr, shadow_mem, cur, typ, address, pc)))
++  Shadow cur(fast_state, 0, kShadowCell, typ);
++  for (; size >= kShadowCell; size -= kShadowCell, shadow_mem += kShadowCnt) {
++    if (UNLIKELY(MemoryAccessRangeOne(thr, shadow_mem, cur, typ)))
+       return;
+   }
+   // Handle ending, if any.
+   if (UNLIKELY(size)) {
+-    Shadow cur(false, false, 0, size, curr_step_id);
+-    if (UNLIKELY(MemoryAccessRangeOne(thr, shadow_mem, cur, typ, address, pc)))
++    Shadow cur(fast_state, 0, size, typ);
++    if (UNLIKELY(MemoryAccessRangeOne(thr, shadow_mem, cur, typ)))
+       return;
+   }
+ }
+diff --git a/compiler-rt/lib/tsan/rtl/tsan_rtl_report.cpp b/compiler-rt/lib/tsan/rtl/tsan_rtl_report.cpp
+index a594f26..4cf8816 100644
+--- a/compiler-rt/lib/tsan/rtl/tsan_rtl_report.cpp
++++ b/compiler-rt/lib/tsan/rtl/tsan_rtl_report.cpp
+@@ -843,19 +843,6 @@ void ReportRace(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, Shadow old,
+   OutputReport(thr, rep);
+ }
+ 
+-// void PrintPC(uptr pc) {
+-//   if (pc) {
+-//     SymbolizedStack *ent = SymbolizeCode(pc);
+-//     if (ent->info.file) {
+-//       Printf("Racy access at %s:%d\n", ent->info.file, ent->info.line);
+-//     } else {
+-//       Printf("Failed to recover source information (symbolizer failed)\n");
+-//     }
+-//   } else {
+-//     Printf("Failed to recover source information (pc == null)\n");
+-//   }
+-// }
+-
+ void PrintCurrentStack(ThreadState *thr, uptr pc) {
+   VarSizeStackTrace trace;
+   ObtainCurrentStack(thr, pc, &trace);
+diff --git a/compiler-rt/lib/tsan/rtl/tsan_shadow.h b/compiler-rt/lib/tsan/rtl/tsan_shadow.h
+index 4b65b06..b222acf 100644
+--- a/compiler-rt/lib/tsan/rtl/tsan_shadow.h
++++ b/compiler-rt/lib/tsan/rtl/tsan_shadow.h
+@@ -58,56 +58,28 @@ class Shadow {
+  public:
+   static constexpr RawShadow kEmpty = static_cast<RawShadow>(0);
+ 
+-  // Shadow(FastState state, u32 addr, u32 size, AccessType typ) {
+-  //   raw_ = state.raw_;
+-  //   DCHECK_GT(size, 0);
+-  //   DCHECK_LE(size, 8);
+-  //   UNUSED Sid sid0 = part_.sid_;
+-  //   UNUSED u16 epoch0 = part_.epoch_;
+-  //   raw_ |= (!!(typ & kAccessAtomic) << kIsAtomicShift) |
+-  //           (!!(typ & kAccessRead) << kIsReadShift) |
+-  //           (((((1u << size) - 1) << (addr & 0x7)) & 0xff) << kAccessShift);
+-  //   // Note: we don't check kAccessAtomic because it overlaps with
+-  //   // FastState::ignore_accesses_ and it may be set spuriously.
+-  //   DCHECK_EQ(part_.is_read_, !!(typ & kAccessRead));
+-  //   DCHECK_EQ(sid(), sid0);
+-  //   DCHECK_EQ(epoch(), epoch0);
+-  // }
+-
+-  Shadow(u8 access, Sid sid, Epoch epoch, bool is_read, bool is_atomic) {
+-    part_.access_ = access;
+-    part_.sid_ = sid;
+-    part_.epoch_ = static_cast<u16>(epoch);
+-    raw_ |= ((static_cast<u32>(is_atomic) << kIsAtomicShift) | (static_cast<u32>(is_read) << kIsReadShift));
+-  }
+-  
+-  Shadow(bool is_atomic, bool is_freed, u32 addr, u32 size, int step_id) {
+-    u8 access = ((((1u << size) - 1) << (addr & 0x7)) & 0xff);
+-    u8 mask = ((access & 0xf0) ? 0x2 : 0x0) | ((access & 0xf) ? 0x1 : 0x0);
+-
+-    u32 raw = static_cast<u32>(is_atomic) << kIsAtomicShift |
+-              static_cast<u32>(is_freed) << kIsFreeShift |
+-              static_cast<u32>(mask) << kAccessMaskShift | 
+-              static_cast<u32>(step_id);
+-    this->raw_ = raw;
++  Shadow(FastState state, u32 addr, u32 size, AccessType typ) {
++    raw_ = state.raw_;
++    DCHECK_GT(size, 0);
++    DCHECK_LE(size, 8);
++    UNUSED Sid sid0 = part_.sid_;
++    UNUSED u16 epoch0 = part_.epoch_;
++    raw_ |= (!!(typ & kAccessAtomic) << kIsAtomicShift) |
++            (!!(typ & kAccessRead) << kIsReadShift) |
++            (((((1u << size) - 1) << (addr & 0x7)) & 0xff) << kAccessShift);
++    // Note: we don't check kAccessAtomic because it overlaps with
++    // FastState::ignore_accesses_ and it may be set spuriously.
++    DCHECK_EQ(part_.is_read_, !!(typ & kAccessRead));
++    DCHECK_EQ(sid(), sid0);
++    DCHECK_EQ(epoch(), epoch0);
+   }
+ 
+   explicit Shadow(RawShadow x = Shadow::kEmpty) { raw_ = static_cast<u32>(x); }
+ 
+-  u32 step_id() const {return newpart_.step_id_; }
+-  bool is_freed() const {return newpart_.is_freed_; }
+-  bool is_atomic() const {return newpart_.is_atomic_; }
+-  u8 access_mask() const {return newpart_.access_mask_; }
+-  
+-  u8 ConvertMaskToAccess() const {
+-    u8 mask = access_mask();
+-    return is_freed() ? kFreeAccess: mask == 0x3 ? 0xff : mask == 0x2 ? 0xf0 : mask == 0x1 ? 0x0f : 0x00;
+-  }
+-  
+   RawShadow raw() const { return static_cast<RawShadow>(raw_); }
+   Sid sid() const { return part_.sid_; }
+   Epoch epoch() const { return static_cast<Epoch>(part_.epoch_); }
+-  // u8 access() const { return part_.access_; }
++  u8 access() const { return part_.access_; }
+ 
+   void GetAccess(uptr *addr, uptr *size, AccessType *typ) const {
+     DCHECK(part_.access_ != 0 || raw_ == static_cast<u32>(Shadow::kRodata));
+@@ -157,24 +129,19 @@ class Shadow {
+ 
+   // The FreedMarker must not pass "the same access check" so that we don't
+   // return from the race detection algorithm early.
+-  // static RawShadow FreedMarker() {
+-  //   FastState fs;
+-  //   fs.SetSid(kFreeSid);
+-  //   fs.SetEpoch(kEpochLast);
+-  //   Shadow s(fs, 0, 0, 8, kAccessWrite);
+-  //   return s.raw();
+-  // }
+-
+-  // static RawShadow FreedInfo(Sid sid, Epoch epoch) {
+-  //   Shadow s;
+-  //   s.part_.sid_ = sid;
+-  //   s.part_.epoch_ = static_cast<u16>(epoch);
+-  //   s.part_.access_ = kFreeAccess;
+-  //   return s.raw();
+-  // }
+-
+-  static RawShadow FreedMarker(u32 step_id) {
+-    Shadow s(false, true, 0, 8, step_id);
++  static RawShadow FreedMarker() {
++    FastState fs;
++    fs.SetSid(kFreeSid);
++    fs.SetEpoch(kEpochLast);
++    Shadow s(fs, 0, 8, kAccessWrite);
++    return s.raw();
++  }
++
++  static RawShadow FreedInfo(Sid sid, Epoch epoch) {
++    Shadow s;
++    s.part_.sid_ = sid;
++    s.part_.epoch_ = static_cast<u16>(epoch);
++    s.part_.access_ = kFreeAccess;
+     return s.raw();
+   }
+ 
+@@ -186,22 +153,9 @@ class Shadow {
+     u16 is_read_ : 1;
+     u16 is_atomic_ : 1;
+   };
+-
+-  struct NewParts
+-  {
+-    //u32 access_ : 8;
+-    //u32 step_id_ : 22;
+-    //u32 is_read_ : 1;
+-    u32 step_id_      : 28;
+-    u32 access_mask_  : 2;
+-    u32 is_freed_     : 1;
+-    u32 is_atomic_    : 1;
+-  };
+-  
+   union {
+     Parts part_;
+     u32 raw_;
+-    NewParts newpart_;
+   };
+ 
+   static constexpr u8 kFreeAccess = 0x81;
+@@ -210,8 +164,6 @@ class Shadow {
+   static constexpr uptr kAccessShift = 0;
+   static constexpr uptr kIsReadShift = 30;
+   static constexpr uptr kIsAtomicShift = 31;
+-  static constexpr uptr kIsFreeShift = 30;
+-  static constexpr uptr kAccessMaskShift = 28;
+ #else
+   static constexpr uptr kAccessShift = 24;
+   static constexpr uptr kIsReadShift = 1;
+@@ -221,7 +173,7 @@ class Shadow {
+  public:
+   // .rodata shadow marker, see MapRodata and ContainsSameAccessFast.
+   static constexpr RawShadow kRodata =
+-      static_cast<RawShadow>(1 << kIsFreeShift);
++      static_cast<RawShadow>(1 << kIsReadShift);
+ };
+ 
+ static_assert(sizeof(Shadow) == kShadowSize, "bad Shadow size");

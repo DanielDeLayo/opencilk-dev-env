@@ -1,0 +1,8 @@
+Bootstrap: docker
+From: ubuntu:18.04
+# STINT's Dockerfile (wustl-pctg/STINT 9b3ca93) as a Singularity image, for hosts without Docker.
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update && apt-get upgrade -y && apt-get install -y g++ gcc gdb make automake libtool libnuma-dev libc-dev \
+      groff git wget binutils-dev python libgsl-dev libjpeg-dev vim-tiny libgoogle-perftools-dev cmake
+    rm -rf /var/lib/apt/lists/*

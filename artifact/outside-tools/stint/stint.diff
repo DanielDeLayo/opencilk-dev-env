@@ -1,0 +1,17 @@
+diff --git a/build-tapir.sh b/build-tapir.sh
+index e74a073..25e9075 100755
+--- a/build-tapir.sh
++++ b/build-tapir.sh
+@@ -1,10 +1,11 @@
+ #!/bin/bash
+ 
+-NPROCS_TOUSE=$(nproc)
++NPROCS_TOUSE=${JOBS:-$(nproc)}
+ 
+ BINUTILS_INC=/usr/include
+ 
+ git clone -b neboat/cilksan https://github.com/OpenCilk/opencilk-project.git
++git -C opencilk-project checkout --detach cafe378d18536fe95e8cb24d927738fe884ac452
+ 
+ # git checkout -b neboat/cilksan origin/neboat/cilksan
+ 

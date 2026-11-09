@@ -1,0 +1,44 @@
+diff --git a/rdtool/config.mk b/rdtool/config.mk
+new file mode 100644
+index 0000000..e9d6253
+--- /dev/null
++++ b/rdtool/config.mk
+@@ -0,0 +1,9 @@
++# The README's example values with its LTO settings; CRACER_W is the work dir cracer.sh exports.
++COMPILER_HOME = $(CRACER_W)/llvm-cilk
++RUNTIME_INTERNAL = $(CRACER_W)/cracer/cilkplusrts
++RUNTIME_LIB = $(CRACER_W)/rts/lib/x86_64/libcilkrts.a
++OPT_FLAG = -O3 -DSTATS=0 -flto
++TOOL_DEBUG = 0
++MALLOC = -ltcmalloc
++LDFLAGS += -flto
++ARFLAGS = --plugin $(COMPILER_HOME)/lib/LLVMgold.so
+diff --git a/rdtool/test/probe/Makefile b/rdtool/test/probe/Makefile
+new file mode 100644
+index 0000000..0d16403
+--- /dev/null
++++ b/rdtool/test/probe/Makefile
+@@ -0,0 +1,7 @@
++# Race probe: 64 spawned writes to x; the tool must report a race.
++include ../test.mk
++LIB = $(LIB_DIR)/lib$(TOOL_NAME).a
++CXXFLAGS += $(RDFLAGS)
++
++probe: probe.o $(LIB)
++	$(CXX) probe.o $(LIB) $(RUNTIME_LIB) $(LDFLAGS) -o probe
+diff --git a/rdtool/test/probe/probe.cpp b/rdtool/test/probe/probe.cpp
+new file mode 100644
+index 0000000..101b503
+--- /dev/null
++++ b/rdtool/test/probe/probe.cpp
+@@ -0,0 +1,10 @@
++#include <cilk/cilk.h>
++#include <stdio.h>
++long x;
++void w(long v) { volatile long s = 0; for (long i = 0; i < 1000000; i++) s += i; x = v + s; }
++int main(void) {
++  for (long i = 0; i < 64; i++) cilk_spawn w(i);
++  cilk_sync;
++  printf("%ld\n", x);
++  return 0;
++}
