@@ -2,3 +2,26 @@
 scratch/
 
 .claude/settings.local.json
+
+# artifact/: tracked (results copies, scripts, recipes); never anything built, run, fetched or non-public
+artifact/**/build/
+artifact/**/build-*/
+artifact/**/run/
+artifact/**/third_party/
+artifact/**/*.o
+artifact/**/*.a
+artifact/**/*.so
+artifact/**/*.so.*
+artifact/**/*.bc
+artifact/**/*.sif
+artifact/**/*.img
+artifact/**/*.tar
+artifact/**/*.tar.*
+artifact/**/*.tgz
+artifact/**/*.zip
+artifact/**/*.core
+artifact/**/core.*
+artifact/**/*.log
+artifact/outside-tools/**/pint*/
+artifact/outside-tools/**/fastracer*/tree/
+!artifact/outside-tools/results/*/pint-wire/
