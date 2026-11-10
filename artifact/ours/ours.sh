@@ -70,7 +70,7 @@ stage_toolchain() {
   mkdir "$WORK" 2>/dev/null; mkdir "$TC" || die "$TC exists"
   cmake -G Ninja -S $SRC/llvm -B $TC -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_ASSERTIONS=On -DLLVM_TARGETS_TO_BUILD=host \
     -DLLVM_ENABLE_PROJECTS=clang -DLLVM_PARALLEL_LINK_JOBS=4 || die "cmake (compiler) failed"
-  ninja -C $TC -j $JOBS clang || die "compiler build failed"
+  ninja -C $TC -j $JOBS clang llvm-link || die "compiler build failed"
   # Every runtime: leb8-flat shadow labels, so cheetah's labels are leb8-anchor (cheetah/runtime/CMakeLists.txt), 128-byte
   # granules refined to bytes on demand. The three configurations differ only in the cilkprace features they turn on.
   local cfg tree opts
@@ -84,9 +84,12 @@ stage_toolchain() {
       -DCMAKE_C_COMPILER=$TC/bin/clang -DCMAKE_CXX_COMPILER=$TC/bin/clang++ -DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=ON \
       -DCHEETAH_ENABLE_ASAN=OFF -DCILKPRACE_LABEL_IMPL=leb8-flat -DCILKPRACE_GRANULARITY=128 -DCILKPRACE_ADAPTIVE_GRANULE=ON \
       -DCILKTOOLS_BUILD_CILKPISTON=OFF -DCILKTOOLS_TO_BUILD="cilksan;cilkprace" \
+      -DCHEETAH_OUTPUT_DIR=$WORK/rt-$cfg/out -DCILKTOOLS_OUTPUT_DIR=$WORK/rt-$cfg/out -DLLVM_LINK=$TC/bin/llvm-link \
       $opts || die "cmake (runtime $cfg) failed"
     # Only the two tools the rows use: the tree also holds CilkPiston, which is not part of the paper and is built by
-    # default (CILKTOOLS_TO_BUILD selects the tools; the BUILD option alone does not stop it).
+    # default (CILKTOOLS_TO_BUILD selects the tools; the BUILD option alone does not stop it). One output dir for both
+    # projects: cilktools' bitcode depends on cheetah's libopencilk-abi.bc under its own output dir. LLVM_LINK is given
+    # because a standalone runtimes build looks for llvm-link only in its own bin/.
     ninja -C $WORK/rt-$cfg -j $JOBS || die "runtime $cfg failed"
     # A resource dir per configuration: the compiler's headers plus this build's libraries and headers.
     cp -a $TC/lib/clang/21 $WORK/res-$cfg && mkdir -p $WORK/res-$cfg/$L

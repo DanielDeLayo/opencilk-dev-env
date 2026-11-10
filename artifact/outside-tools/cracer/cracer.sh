@@ -47,13 +47,14 @@ build() {
     make -j$JOBS && PATH=$W/stubbin:\$PATH make install"
   # Runtime, built with -flto as the README requires for LTO; its libtool archives bitcode with plain ar, so the
   # installed archive is then indexed with the gold plugin (otherwise gold cannot resolve __cilkrts_* at the link).
-  [ -e rts/lib/x86_64/libcilkrts.a ] || X "cd $W/cracer/cilkplusrts && ./setup.sh &&
+  # Gold is ld for every -flto step (README): the image's ld is bfd, which cannot link clang's bitcode objects.
+  mkdir -p goldbin && ln -sf /usr/bin/ld.gold goldbin/ld
+  [ -e rts/lib/x86_64/libcilkrts.a ] || X "export PATH=$W/goldbin:\$PATH && cd $W/cracer/cilkplusrts && ./setup.sh &&
     ./configure --prefix=$W/rts CC=$W/llvm-cilk/bin/clang CXX=$W/llvm-cilk/bin/clang++ \
       CFLAGS='-O3 -fno-omit-frame-pointer -flto' CXXFLAGS='-O3 -fno-omit-frame-pointer -flto' &&
     make -j$JOBS && make install &&
     ranlib --plugin $W/llvm-cilk/lib/LLVMgold.so $W/rts/lib/x86_64/libcilkrts.a"
   # rdtool and the programs, with gold as ld (README); sequential, since parallel makes race on mkdir.
-  mkdir -p goldbin && ln -sf /usr/bin/ld.gold goldbin/ld
   X "export PATH=$W/goldbin:\$PATH && cd $W/cracer/rdtool && make -C src &&
     make -C test/bench base brd"
   cp "$H/../rsscap.c" "$W/" && X "gcc -std=gnu99 -O2 -o $W/rsscap $W/rsscap.c"
