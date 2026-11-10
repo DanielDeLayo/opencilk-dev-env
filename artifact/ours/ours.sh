@@ -11,7 +11,8 @@
 #   - cilktools (cilkprace): cilktools-1..11 (flat labels, 64-byte entries, resplit, line locks, shadow MADV_DONTDUMP),
 #     the strand-set patches ss-1, ss-1b and ss-2c, and then the label-spill patch cilktools-12-flat-spill (CILKPRACE_FLAT_SPILL);
 #     cilkprace/CMakeLists.txt: -Xclang -mno-constructor-aliases restored on the bitcode flags (the paper's bitcode was built with it);
-#   - cheetah 8a4af2e plus the sync-restore patch and the label-layout patch (os_label_config.h);
+#   - cheetah 8a4af2e plus the sync-restore patch and the label-layout patch (os_label_config.h); runtime/CMakeLists.txt gives
+#     leb8-flat the anchor define, as for leb8-ptr (the paper's cheetah was compiled with it);
 #   - the benchmarks in cilktools/cilkprace/race_detection_examples (getoptions.c, the 12 benchmarks, with rectmulred.c's
 #     check writing *errorf only on error) plus linear_sweep.c. BENCH overrides that directory.
 # The strand-set and spill code is under #if CILKPRACE_STRAND_SET / CILKPRACE_FLAT_SPILL, so one tree builds every row. The
@@ -106,6 +107,17 @@ stage_toolchain() {
       [ -s $WORK/res-$cfg/$L/$f ] || die "runtime $cfg: no $L/$f"
     done
     grep -q USE_OS_LABEL_LEB8_ANCHOR $WORK/res-$cfg/include/cilk/os_label_config.h || die "runtime $cfg: labels not leb8-anchor"
+    # The runtime itself must be built with anchor labels too, not just the installed header: cheetah's compile lines get
+    # -DUSE_OS_LABEL_LEB8_ANCHOR=1 from CILKPRACE_LABEL_IMPL=leb8-flat (cheetah's runtime/CMakeLists.txt, the
+    # cheetah-1-flat-anchor hunk). Without it cheetah falls back to leb8-single labels while the tools and benchmarks use
+    # leb8-anchor: the binaries link and pass at 1 worker, then segfault above (os_label ABI mismatch). Check
+    # the shared library the rows link, for an anchor-only symbol and against the leb8-single signature.
+    for lib in $WORK/res-$cfg/$L/libopencilk.a $WORK/res-$cfg/$L/libopencilk.so; do
+      nm -DC $lib 2>/dev/null | grep -q "os_label::spill()" || nm -C $lib 2>/dev/null | grep -q " T os_label::spill()" ||
+        die "runtime $cfg: $(basename $lib) not built with anchor labels (no os_label::spill)"
+      ! nm -DC $lib 2>/dev/null | grep -q "restore_on_sync(unsigned short)" ||
+        die "runtime $cfg: $(basename $lib) built with leb8-single labels"
+    done
   done
 }
 
