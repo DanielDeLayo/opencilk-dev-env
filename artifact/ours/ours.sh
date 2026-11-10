@@ -10,6 +10,7 @@
 #     llvm-linux-elf-comdat;
 #   - cilktools (cilkprace): cilktools-1..11 (flat labels, 64-byte entries, resplit, line locks, shadow MADV_DONTDUMP),
 #     the strand-set patches ss-1, ss-1b and ss-2c, and then the label-spill patch cilktools-12-flat-spill (CILKPRACE_FLAT_SPILL);
+#     cilkprace/CMakeLists.txt: -Xclang -mno-constructor-aliases restored on the bitcode flags (the paper's bitcode was built with it);
 #   - cheetah 8a4af2e plus the sync-restore patch and the label-layout patch (os_label_config.h);
 #   - the benchmarks in cilktools/cilkprace/race_detection_examples (getoptions.c, the 12 benchmarks, with rectmulred.c's
 #     check writing *errorf only on error) plus linear_sweep.c. BENCH overrides that directory.
@@ -80,12 +81,18 @@ stage_toolchain() {
       ss)    tree=$SRC_SS opts="-DCILKPRACE_STRAND_SET=ON" ;;
       spill) tree=$SRC opts="-DCILKPRACE_STRAND_SET=ON -DCILKPRACE_FLAT_SPILL=ON" ;;
     esac
+    mkdir -p $WORK/rt-$cfg/out/include   # clang rejects an --opencilk-resource-dir without include/, even at configure time
     cmake -G Ninja -S $tree/runtimes -B $WORK/rt-$cfg -DLLVM_ENABLE_RUNTIMES="cheetah;cilktools" -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_C_COMPILER=$TC/bin/clang -DCMAKE_CXX_COMPILER=$TC/bin/clang++ -DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=ON \
       -DCHEETAH_ENABLE_ASAN=OFF -DCILKPRACE_LABEL_IMPL=leb8-flat -DCILKPRACE_GRANULARITY=128 -DCILKPRACE_ADAPTIVE_GRANULE=ON \
       -DCILKTOOLS_BUILD_CILKPISTON=OFF -DCILKTOOLS_TO_BUILD="cilksan;cilkprace" \
       -DCHEETAH_OUTPUT_DIR=$WORK/rt-$cfg/out -DCILKTOOLS_OUTPUT_DIR=$WORK/rt-$cfg/out -DLLVM_LINK=$TC/bin/llvm-link \
+      -DLLVM_ENABLE_ASSERTIONS=ON \
+      "-DCMAKE_C_FLAGS=-fno-semantic-interposition --opencilk-resource-dir=$WORK/rt-$cfg/out" \
+      "-DCMAKE_CXX_FLAGS=-fno-semantic-interposition --opencilk-resource-dir=$WORK/rt-$cfg/out" \
       $opts || die "cmake (runtime $cfg) failed"
+    # The flags OpenCilk's own build (assertions on) gives the runtimes: -D_DEBUG -D_GLIBCXX_ASSERTIONS -fno-semantic-interposition.
+    # --opencilk-resource-dir: the tools' -fopencilk compiles take cheetah's ABI bitcode and headers from this build's out/.
     # Only the two tools the rows use: the tree also holds CilkPiston, which is not part of the paper and is built by
     # default (CILKTOOLS_TO_BUILD selects the tools; the BUILD option alone does not stop it). One output dir for both
     # projects: cilktools' bitcode depends on cheetah's libopencilk-abi.bc under its own output dir. LLVM_LINK is given
