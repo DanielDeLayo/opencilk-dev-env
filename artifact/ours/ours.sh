@@ -112,11 +112,12 @@ stage_toolchain() {
     # cheetah-1-flat-anchor hunk). Without it cheetah falls back to leb8-single labels while the tools and benchmarks use
     # leb8-anchor: the binaries link and pass at 1 worker, then segfault above (os_label ABI mismatch). Check
     # the shared library the rows link, for an anchor-only symbol and against the leb8-single signature.
+    # No pipeline here: under pipefail, grep -q closing the pipe early gives nm SIGPIPE and the check a false failure.
     for lib in $WORK/res-$cfg/$L/libopencilk.a $WORK/res-$cfg/$L/libopencilk.so; do
-      nm -DC $lib 2>/dev/null | grep -q "os_label::spill()" || nm -C $lib 2>/dev/null | grep -q " T os_label::spill()" ||
-        die "runtime $cfg: $(basename $lib) not built with anchor labels (no os_label::spill)"
-      ! nm -DC $lib 2>/dev/null | grep -q "restore_on_sync(unsigned short)" ||
-        die "runtime $cfg: $(basename $lib) built with leb8-single labels"
+      case $lib in *.so) nmf=-DC ;; *) nmf=-C ;; esac   # the .so's dynamic table is what the rows link against
+      syms=$(nm $nmf --defined-only $lib) || die "runtime $cfg: nm $(basename $lib) failed"
+      grep -q "os_label::spill()" <<< "$syms" || die "runtime $cfg: $(basename $lib) not built with anchor labels (no os_label::spill)"
+      ! grep -q "restore_on_sync(unsigned short)" <<< "$syms" || die "runtime $cfg: $(basename $lib) built with leb8-single labels"
     done
   done
 }
