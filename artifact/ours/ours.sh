@@ -83,7 +83,10 @@ stage_toolchain() {
     cmake -G Ninja -S $tree/runtimes -B $WORK/rt-$cfg -DLLVM_ENABLE_RUNTIMES="cheetah;cilktools" -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_C_COMPILER=$TC/bin/clang -DCMAKE_CXX_COMPILER=$TC/bin/clang++ -DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=ON \
       -DCHEETAH_ENABLE_ASAN=OFF -DCILKPRACE_LABEL_IMPL=leb8-flat -DCILKPRACE_GRANULARITY=128 -DCILKPRACE_ADAPTIVE_GRANULE=ON \
+      -DCILKTOOLS_BUILD_CILKPISTON=OFF -DCILKTOOLS_TO_BUILD="cilksan;cilkprace" \
       $opts || die "cmake (runtime $cfg) failed"
+    # Only the two tools the rows use: the tree also holds CilkPiston, which is not part of the paper and is built by
+    # default (CILKTOOLS_TO_BUILD selects the tools; the BUILD option alone does not stop it).
     ninja -C $WORK/rt-$cfg -j $JOBS || die "runtime $cfg failed"
     # A resource dir per configuration: the compiler's headers plus this build's libraries and headers.
     cp -a $TC/lib/clang/21 $WORK/res-$cfg && mkdir -p $WORK/res-$cfg/$L
