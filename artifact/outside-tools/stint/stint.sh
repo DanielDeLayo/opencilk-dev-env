@@ -1,11 +1,11 @@
 #!/bin/bash
 # Reproduce Table 1's STINT row (Xu et al., ALENEX 2022): P=1 time and peak memory, each against the artifact's own
 # uninstrumented build, on its 7 benchmarks with the paper's inputs (stint-bench.txt).
-#   stint.sh build   image + source + compiler + runtime + benchmarks (~4 h at JOBS=10; Slurm: sbatch -p shared -c $JOBS)
-#   stint.sh run     timing sweep + peak RSS + summary  (~1 h; 1 core, fft peaks ~25 GB; Slurm: sbatch -p fullmachine)
+#   stint.sh build   image + source + compiler + runtime + benchmarks (~4 h at JOBS=10)
+#   stint.sh run     timing sweep + peak RSS + summary  (~1 h; 1 core, fft peaks ~25 GB; idle machine)
 #   stint.sh         both
 #   stint.sh ours    the "our ports" sub-row: STINT on our 14 cases, ported by port.py (after build; ~1 h; 1 core;
-#                    Slurm: sbatch -p fullmachine). Needs BENCH (our benchmark sources, as ours.sh) and NOTOOL (ours.sh's
+#                    idle machine). Needs BENCH (our benchmark sources, as ours.sh) and NOTOOL (ours.sh's
 #                    f64-notool binaries, for the reference answers).
 # Env: JOBS (build parallelism, default 10), CPU (core for the P=1 runs, default 5), ROUNDS (default 3),
 #      W (work dir, default ./third_party/stint), OUT (default ./results/stint), SING (default: apptainer or singularity).

@@ -1,7 +1,7 @@
-// D9b harness: run a command with a wall-time limit and a resident-memory cap, then write its peak RSS
+// Run a command with a wall-time limit and a resident-memory cap, then write its peak RSS
 // (wait4 ru_maxrss), wall time, exit status and the reason it was killed (if any) to STATSFILE.
 // Usage: rsscap STATSFILE TIMEOUT_S RSSCAP_MB cmd args...   (RSSCAP_MB 0 = no cap)
-// Replaces maxrss + timeout(1) for D9b: the command is exec'd in the forked child, and env, taskset and
+// Replaces maxrss + timeout(1): the command is exec'd in the forked child, and env, taskset and
 // setarch all exec in place, so the child's pid is the benchmark's and its RSS can be polled directly
 // (/proc/<pid>/statm every POLL_MS ms, default 100). SPD3 keeps a 64-byte shadow entry per byte address, so a
 // tool run can outgrow the machine; the cap kills it first (SIGKILL) and the run is scored as killed=rss.

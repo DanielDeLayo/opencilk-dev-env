@@ -4,10 +4,9 @@
 #   spd3pc  TSan-spd3 (Yu et al., PLDI 2023) at the paper's commit 7375492; baseline notoolpc.
 #   archer  TSan-spd3 HEAD 3f7cf0e9's clang 15 and libomp, with the stock TSan runtime of its upstream base
 #           (llvm-project 232bd331, archer.diff) and Archer selected by DEFAULT_OMPT_LIB; baseline notool.
-#   omp.sh build   clang 14 + 2 LLVM builds + stock TSan runtime + 44 binaries  (~5 h at JOBS=10, estimate;
-#                  Slurm: sbatch -p shared -c $JOBS)
+#   omp.sh build   clang 14 + 2 LLVM builds + stock TSan runtime + 44 binaries  (~5 h at JOBS=10, estimate)
 #   omp.sh run     timing sweep with peak RSS + summary  (~1.8 h at ROUNDS=3, PS="1 24"; spd3pc fib peaks at 36 GB,
-#                  so ~40 GB of RAM; Slurm: sbatch -p fullmachine)
+#                  so ~40 GB of RAM; idle machine)
 #   omp.sh         both
 # Env: JOBS (build parallelism, default 10), PS (worker counts, default "1 24"), ROUNDS (default 3), TMO (seconds before
 #      a run is killed, default 1800), W (work dir, default ./third_party/openmp), OUT (default ./results/openmp),

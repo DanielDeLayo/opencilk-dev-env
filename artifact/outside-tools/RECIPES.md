@@ -31,7 +31,7 @@ for like, even where both differ from ours.
 | STINT | `-O3 -g -flto -fno-omit-frame-pointer -fcilkplus`; tcmalloc; static libcilkrts.a | same flags, without `-fsanitize=cilk -DEND_OF_COMPUTATION` and the tool objects | LTO: the tool objects are compiled with the same `-flto` flags (their `benchmarks/sync/Makefile`, TOOL_FLAGS) | tcmalloc, frame pointer, Cilk Plus runtime | same |
 | C-RACER | `-O3 -g -flto -fno-omit-frame-pointer -fcilkplus -fcilk-no-inline`; tcmalloc; rdtool and the Cilk Plus runtime built `-flto`, archive indexed with the gold plugin | `base`: the same flags, runtime and malloc, without `-DRACEDETECT -fcilktool -fsanitize=thread` and librd.a (`rdtool/common.mk`, `rdtool/test/bench/Makefile` at 033f0bc0) | LTO | tcmalloc, frame pointer, `-fcilk-no-inline` | same |
 | PINT | `-O3 -g -flto -fno-omit-frame-pointer -fcilkplus`; tcmalloc; static libcilkrts.a | the same, without `-fsanitize=cilk -DRD_TOOL` and the tool objects | LTO: the tool objects are LLVM IR bitcode | tcmalloc, frame pointer | same |
-| SPD3 port, PTRacer, FastRacer (2 programs) | our clang 21.1.3, `-O3 -std=c++11 -fgnuc-version=5.4.0`, TBB 4.3 include copy with the one-line enum fix; hand-placed RecordMem calls, no `-ftaskdebug`; linked with g++ 5.4 against dynamic libftdebug.so (built with g++ 5.4 at -O3, their library Makefiles) and libtbb.so.2 | the same compiler and flags, no RecordMem (`d9notool.h`), `d9stub.o`, the notool libftdebug.so and libtbb.so.2 | out-of-line calls through the PLT into a shared library | no LTO of the hooks; dynamic tool library | same (same compiler, flags and headers; both dynamic) |
+| SPD3 port, PTRacer, FastRacer (2 programs) | our clang 21.1.3, `-O3 -std=c++11 -fgnuc-version=5.4.0`, TBB 4.3 include copy with the one-line enum fix; hand-placed RecordMem calls, no `-ftaskdebug`; linked with g++ 5.4 against dynamic libftdebug.so (built with g++ 5.4 at -O3, their library Makefiles) and libtbb.so.2 | the same compiler and flags, no RecordMem (`notool.h`), `notool-stub.o`, the notool libftdebug.so and libtbb.so.2 | out-of-line calls through the PLT into a shared library | no LTO of the hooks; dynamic tool library | same (same compiler, flags and headers; both dynamic) |
 | SPD3 port, PTRacer (every access) | our compiler, `-O3 -ftapir=lambda -cilksan-ptracer-hooks`; shim built with clang 3.7 `-O2`; dynamic libftdebug.so | notool-lambda: the same compiler and flags, the shim's notool build, no tool library | out-of-line calls into the shim, then into the shared library | no LTO of the hooks; dynamic tool library | same compiler and flags |
 | TSan-spd3, Archer | clang 15, `-O3 -g -fopenmp -D_GNU_SOURCE -fsanitize=thread`, `-no-pie` at link; static TSan runtime; dynamic libomp (and libarcher.so for Archer) | notool / notoolpc: the same without `-fsanitize=thread` | out-of-line calls into the TSan runtime; compiler-rt builds sanitizer runtimes with `-fno-lto` (compiler-rt/CMakeLists.txt, `SANITIZER_COMMON_CFLAGS`) | no LTO of the hooks; libomp dynamic | same |
 | Task-centric Archer | the image's clang 15.0.7, `-O3 -g -fopenmp -D_GNU_SOURCE -fno-omit-frame-pointer -fsanitize=thread`, `-no-pie` at link; libstdc++ | notool-jenke: `-O3 -g -fopenmp -D_GNU_SOURCE`, `-no-pie` at link, no frame-pointer flag | as TSan-spd3 | as TSan-spd3, plus libstdc++ | **not** quite: the frame-pointer flag is on the tool side only, as in the artifact's `clang_tsan_*.def` files |
@@ -148,8 +148,8 @@ All three come from one artifact.
 compiled by the paper's clang 21.1.3 instead of their clang 3.7 (no `-ftaskdebug`):
 ```
 clang++ --sysroot=<the image's /usr/include and /usr/lib/gcc/x86_64-linux-gnu> -target x86_64-unknown-linux-gnu \
-  -fgnuc-version=5.4.0 -std=c++11 -O3 [-include d9notool.h] -I<tool lib>/include -I<TBB include copy> -c <prog>.cpp
-g++ <prog>.o [d9stub.o] -L<tool lib>/obj -lftdebug -L<TBB lib> -ltbb -lpthread -lm -ldl -o <prog>   # in the image
+  -fgnuc-version=5.4.0 -std=c++11 -O3 [-include notool.h] -I<tool lib>/include -I<TBB include copy> -c <prog>.cpp
+g++ <prog>.o [notool-stub.o] -L<tool lib>/obj -lftdebug -L<TBB lib> -ltbb -lpthread -lm -ldl -o <prog>   # in the image
 ```
 - `<tool lib>` is notool, spd3-lib, tdebug-lib or fastracer; the sysroot must make clang select the image's GCC 5.4
   (`clang++ -v` shows "Selected GCC installation: …/5" and no host headers).
@@ -166,9 +166,9 @@ g++ <prog>.o [d9stub.o] -L<tool lib>/obj -lftdebug -L<TBB lib> -ltbb -lpthread -
 - The notool baseline gets the same compiler, flags and headers.
 
 **Harness additions (all ours, outside their tree):**
-- `d9notool.h`, force-included in the notool build: `#define RecordMem(...) ((void)0)`. Their programs call
+- `notool.h`, force-included in the notool build: `#define RecordMem(...) ((void)0)`. Their programs call
   RecordMem unguarded, and the notool library declares none.
-- `d9stub.cpp`, linked into the notool build: `extern "C" void TD_Activate() {}` and `extern "C" void Fini() {}`,
+- `notool-stub.cpp`, linked into the notool build: `extern "C" void TD_Activate() {}` and `extern "C" void Fini() {}`,
   which the programs call and notool does not define.
 
 **Run:** P=1 and P=24, P set with `taskset` masks; 3 interleaved rounds; minimum region-of-interest time per cell;

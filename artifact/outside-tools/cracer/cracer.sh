@@ -2,8 +2,8 @@
 # Reproduce Table 1's C-RACER row (the original implementation, wustl-pctg/cracer): brd (detector) over base
 # (no detector) at P=1 and P=24, and peak memory at P=1, on the 3 benchmarks the shipped runtime completes (cilksort,
 # matmul, rectmul; the other 8 abort, note b), in the README's LTO configuration.
-#   cracer.sh build   image + sources + compiler + runtime + rdtool + benchmarks + gate  (~3 h at JOBS=10; Slurm: sbatch -p shared -c $JOBS)
-#   cracer.sh run     timing sweep + peak RSS + summary  (~2 h; Slurm: sbatch -p fullmachine)
+#   cracer.sh build   image + sources + compiler + runtime + rdtool + benchmarks + gate  (~3 h at JOBS=10)
+#   cracer.sh run     timing sweep + peak RSS + summary  (~2 h; idle machine)
 #   cracer.sh         both
 # Env: JOBS (build parallelism, default 10), PS (worker counts, default "1 24"), CPU (core for P=1, default 5),
 #      CORES (taskset list for P>1, default unpinned), ROUNDS (default 3), W (work dir, default ./third_party/cracer),

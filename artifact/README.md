@@ -19,12 +19,12 @@ every number is remeasured by the reader.
 The TBB rows (SPD3 C++ port, PTRacer, FastRacer) and PINT have build commands in
 `outside-tools/RECIPES.md` but no script yet. PINT's source is not public and is not included.
 
-## Rules
+## Run order
 
-- Sources, build commands and scripts only. No results, logs, summaries, job scripts,
-  checksums of absent files or provenance notes; those live under `scratch/`.
-- Keep the file count small (15 files). One script per outside tool
-  with the files it applies, one script for our rows.
-- Every number change in the paper is checked outside the artifact with
-  `scratch/paper-audit/scripts/audit_tables.py` and
-  `scratch/paper-audit/outside-tools/recompute_outside.py`; both must exit 0.
+1. `SRC=<tree> ours.sh all` builds the toolchain and our rows, then gates, times and measures them. Its uninstrumented
+   binaries land in `$WORK/v/f64-notool`.
+2. `stint.sh`, `cracer.sh` and `openmp/omp.sh` do not depend on `ours.sh` or on each other. Each runs `build`, then
+   `run`; run the timing stages one at a time on an otherwise idle machine.
+3. `stint.sh ours` runs after `stint.sh build` and after `ours.sh` has built its rows, with
+   `BENCH=<tree>/cilktools/cilkprace/race_detection_examples` (the benchmark sources `ours.sh` uses) and
+   `NOTOOL=$WORK/v/f64-notool` (its reference answers come from these binaries).
