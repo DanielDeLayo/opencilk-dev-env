@@ -4,7 +4,7 @@
 #   stint.sh build   image + source + compiler + runtime + benchmarks (~4 h at JOBS=10)
 #   stint.sh run     timing sweep + peak RSS + summary  (~1 h; 1 core, fft peaks ~25 GB; idle machine)
 #   stint.sh         both
-#   stint.sh ours    the "our ports" sub-row: STINT on our 14 cases, ported by port.py (after build; ~1 h; 1 core;
+#   stint.sh ours    the "our ports" sub-row: STINT on our 12 programs, ported by port.py (after build; ~1 h; 1 core;
 #                    idle machine). Needs BENCH (our benchmark sources, as ours.sh) and NOTOOL (ours.sh's
 #                    f64-notool binaries, for the reference answers).
 # Env: JOBS (build parallelism, default 10), CPU (core for the P=1 runs, default 5), ROUNDS (default 3),
@@ -112,15 +112,13 @@ rectmul|rectmul|-c|
 rectmulred|rectmulred|-c|
 spp_karatsuba|spp_karatsuba||
 spp_sort|spp_sort||
-strassen|strassen|-c|
-linear_sweep|linear_sweep||
-linear_sweep_o|linear_sweep|-o 1|-o 1"
+strassen|strassen|-c|"
   [ -x "$W/rsscap" ] && [ -x "$CC" ] || { echo "stint.sh: ours needs a finished build" >&2; exit 1; }
   [ -d $O/src ] || { mkdir -p $O/obj $O/bin && python3 -I "$H/port.py" "$BENCH" $O/src && cp "$H/stint-eoc.cpp" $O/; } \
     || { echo "stint.sh: port failed" >&2; exit 1; }
   X "cd $O/obj && $CC $CFC $INC -c ../src/getoptions.c -o getoptions.o && ${CC}++ $TF $INC -c ../stint-eoc.cpp -o stint-eoc.o" \
     > $O/obj/common.log 2>&1 || { cat $O/obj/common.log; exit 1; }
-  for p in cholesky cilksort fib lu matmul nqueens qsort rectmul rectmulred spp_karatsuba spp_sort strassen linear_sweep; do
+  for p in cholesky cilksort fib lu matmul nqueens qsort rectmul rectmulred spp_karatsuba spp_sort strassen; do
     [ -x $O/bin/$p-rd ] && continue
     case $p in qsort|spp_*) cc="${CC}++ $TF" s=$p.cpp ;; *) cc="$CC $CFC" s=$p.c ;; esac
     g=getoptions.o; case $p in spp_*) g= ;; esac   # spp_* parse no options
@@ -158,7 +156,7 @@ linear_sweep_o|linear_sweep|-o 1|-o 1"
     echo "GATE $c: $v  f64-notool[$ref]  ori[$ori]  rd[$rd]"
     [ $v = OK ] && echo $c >> $O/GATE
   done <<< "$CASES"
-  echo "gate: $(wc -l < $O/GATE | tr -d ' ') of 14 cases pass: $(tr '\n' ' ' < $O/GATE)"
+  echo "gate: $(wc -l < $O/GATE | tr -d ' ') of 12 cases pass: $(tr '\n' ' ' < $O/GATE)"
   [ -s $O/GATE ] || exit 1
 
   mkdir -p $R && : > $R/time.txt && : > $R/rss.txt

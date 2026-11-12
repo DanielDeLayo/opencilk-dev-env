@@ -12,7 +12,7 @@
 import os, re, sys
 
 FILES = ["cholesky.c", "cilksort.c", "fib.c", "lu.c", "matmul.c", "nqueens.c", "qsort.cpp", "rectmul.c",
-         "rectmulred.c", "spp_karatsuba.cpp", "spp_sort.cpp", "strassen.c", "linear_sweep.c"]
+         "rectmulred.c", "spp_karatsuba.cpp", "spp_sort.cpp", "strassen.c"]
 COPY = ["getoptions.c", "getoptions.h", "timing.h"]
 
 

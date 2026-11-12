@@ -69,7 +69,7 @@ timer; peak RSS at P=1.
 
 ### Our ports (the STINT sub-row)
 
-STINT on our 14 benchmark cases, serial, against STINT's own uninstrumented build of the same port. The row is
+STINT on our 12 benchmark programs, serial, against STINT's own uninstrumented build of the same port. The row is
 "our ports": STINT's compiler (LLVM 9 Tapir, `-fcilkplus`) does not take our sources as they are.
 
 **Changes:** `stint/port.py` makes three mechanical edits and leaves every other byte alone:
@@ -174,7 +174,7 @@ g++ <prog>.o [notool-stub.o] -L<tool lib>/obj -lftdebug -L<TBB lib> -ltbb -lpthr
 **Run:** P=1 and P=24, P set with `taskset` masks; 3 interleaved rounds; minimum region-of-interest time per cell;
 peak RSS at P=1.
 
-**Every-access rows:** our 14 Cilk benchmarks ported to TBB, built at -O3 with our compiler, `-ftapir=lambda
+**Every-access rows:** our 12 Cilk benchmarks ported to TBB, built at -O3 with our compiler, `-ftapir=lambda
 -cilksan-ptracer-hooks`, the image's GCC 5.4 as the sysroot. A shim (`lambda-tbb-rts.cpp`, built with their clang 3.7
 -O2) maps the lambda runtime onto TBB tasks and RecordMem; it is linked in the image with g++ 5.4 against each tool's
 libftdebug.so.

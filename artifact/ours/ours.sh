@@ -13,8 +13,8 @@
 #     cilkprace/CMakeLists.txt: -Xclang -mno-constructor-aliases restored on the bitcode flags (the paper's bitcode was built with it);
 #   - cheetah 8a4af2e plus the sync-restore patch and the label-layout patch (os_label_config.h); runtime/CMakeLists.txt gives
 #     leb8-flat the anchor define, as for leb8-ptr (the paper's cheetah was compiled with it);
-#   - the benchmarks in cilktools/cilkprace/race_detection_examples (getoptions.c, the 12 benchmarks, with rectmulred.c's
-#     check writing *errorf only on error) plus linear_sweep.c. BENCH overrides that directory.
+#   - the benchmarks in cilktools/cilkprace/race_detection_examples (getoptions.c and the 12 benchmarks, with rectmulred.c's
+#     check writing *errorf only on error). BENCH overrides that directory.
 # The strand-set and spill code is under #if CILKPRACE_STRAND_SET / CILKPRACE_FLAT_SPILL, so one tree builds every row. The
 # paper's rows without strand sets were built from a tree without the strand-set and spill patches, and the strand-set rows
 # without spill from one without the spill patch; SRC_PLAIN and SRC_SS name such trees to match that exactly (default SRC).
@@ -62,10 +62,9 @@ CASES=(
   "qsort|qsort||-n 50000000"                    "rectmul|rectmul||-x 4096 -y 4096 -z 2048"
   "rectmulred|rectmulred||-x 4096 -y 4096 -z 2048" "spp_karatsuba|spp_karatsuba||-r 2000"
   "spp_sort|spp_sort||-m 20"                    "strassen|strassen||-n 4096"
-  "linear_sweep|linear_sweep||-n 67108864 -p 400" "linear_sweep_o|linear_sweep|-o 1|-n 67108864 -p 400 -o 1"
 )
 # Timing groups (each group is one interleaved sweep).
-GROUPS_=("spp_karatsuba strassen fib" "matmul spp_sort" "rectmul rectmulred nqueens" "cholesky cilksort lu qsort" "linear_sweep linear_sweep_o")
+GROUPS_=("spp_karatsuba strassen fib" "matmul spp_sort" "rectmul rectmulred nqueens" "cholesky cilksort lu qsort")
 
 # ---- toolchain: the compiler, then one runtime build (cheetah + cilktools) per configuration -------------------------------
 stage_toolchain() {
@@ -122,7 +121,7 @@ stage_toolchain() {
   done
 }
 
-# ---- rows: the 13 benchmark binaries of every row --------------------------------------------------------------------------
+# ---- rows: the 12 benchmark binaries of every row --------------------------------------------------------------------------
 stage_rows() {
   [ -x $TC/bin/clang ] || die "run the toolchain stage first"
   mkdir $V || die "$V exists"
@@ -141,7 +140,7 @@ stage_rows() {
     esac
     s=$(sfx $NAME); o=$V/$NAME/obj
     $TC/bin/clang "${common[@]}" -o $o/getoptions.o -c $BENCH/getoptions.c || die "$NAME: getoptions"
-    for b in cholesky cilksort fib lu matmul nqueens qsort rectmul rectmulred spp_karatsuba spp_sort strassen linear_sweep; do
+    for b in cholesky cilksort fib lu matmul nqueens qsort rectmul rectmulred spp_karatsuba spp_sort strassen; do
       case $b in qsort|spp_*) cc=$TC/bin/clang++ src=$BENCH/$b.cpp ;; *) cc=$TC/bin/clang src=$BENCH/$b.c ;; esac
       case $b in spp_*) g="" ;; *) g=$o/getoptions.o ;; esac
       $cc "${common[@]}" "${tool[@]}" -o $o/$b.o -c $src &&
@@ -164,7 +163,7 @@ answer() {  # answer WORKERS EXE ARGS... -> "status|race|bad|answer lines"
   echo "$st|$race|$bad|$(grep -E "^Result:|Total number of solutions|Sort succeeded" <<< "$out" | tr '\n' ' ')"
 }
 GATE_BENCH=("cholesky -c" "cilksort -c" "fib" "lu -c" "matmul -c" "nqueens" "qsort -s 1" "rectmul -c" "rectmulred -c"
-            "spp_karatsuba" "spp_sort" "strassen -c" "linear_sweep" "linear_sweep -o 1")
+            "spp_karatsuba" "spp_sort" "strassen -c")
 stage_gate() {
   local r NAME bb w ok got ref
   declare -A refs
@@ -238,7 +237,7 @@ stage_large() {
   times large-w24 24 $CPUS24 large 1 3 "1 2 3" 1 f64-notool f64ss-l128-NKS
 }
 
-# ---- rss: peak resident memory, 1 worker, -i 1, default inputs plus cholesky on its large input --------------------------
+# ---- rss: peak resident memory, 1 worker, -i 1, default inputs; cholesky on its large input is reported apart ------------
 stage_rss() {
   mkdir -p $R; local x n o rc m
   for x in "${CASES[@]}" "cholesky-large|cholesky|-n 4000 -z 40000|"; do
@@ -297,11 +296,12 @@ for l in open(sys.argv[1]):
     else: bad.append(l.strip())
 gm = lambda xs: math.exp(sum(map(math.log, xs)) / len(xs)) if xs else float('nan')
 base = 'f64-notool'
-print("peak RSS geomean ratio to f64-notool (all cases / without cholesky-large); nonzero status: " + ('; '.join(bad) or 'none'))
+print("peak RSS geomean ratio to f64-notool over the default inputs (cholesky-large apart); nonzero status: " + ('; '.join(bad) or 'none'))
 for n in order:
     if n == base: continue
-    cs = [c for c in kb[n] if c in kb[base]]
-    print(f"  {n:22} {gm([kb[n][c] / kb[base][c] for c in cs]):8.3f}  ({gm([kb[n][c] / kb[base][c] for c in cs if c != 'cholesky-large']):.3f})  {len(cs)} cases")
+    cs = [c for c in kb[n] if c in kb[base] and c != 'cholesky-large']
+    xl = f"{kb[n]['cholesky-large'] / kb[base]['cholesky-large']:.3f}" if 'cholesky-large' in kb[n] and 'cholesky-large' in kb[base] else 'none'
+    print(f"  {n:22} {gm([kb[n][c] / kb[base][c] for c in cs]):8.3f}  {len(cs)} cases; cholesky-large {xl}")
 EOP
 }
 
