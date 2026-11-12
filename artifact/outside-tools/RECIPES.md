@@ -29,7 +29,7 @@ for like, even where both differ from ours.
 | Row | Tool build | Baseline build | Hooks reach the tool by | Differs from ours | Within the row |
 |---|---|---|---|---|---|
 | STINT | `-O3 -g -flto -fno-omit-frame-pointer -fcilkplus`; tcmalloc; static libcilkrts.a | same flags, without `-fsanitize=cilk -DEND_OF_COMPUTATION` and the tool objects | LTO: the tool objects are compiled with the same `-flto` flags (their `benchmarks/sync/Makefile`, TOOL_FLAGS) | tcmalloc, frame pointer, Cilk Plus runtime | same |
-| C-RACER | `-O3 -g -flto -fno-omit-frame-pointer -fcilkplus -fcilk-no-inline`; tcmalloc; rdtool and the Cilk Plus runtime built `-flto`, archive indexed with the gold plugin | `base`: the same flags, runtime and malloc, without `-DRACEDETECT -fcilktool -fsanitize=thread` and librd.a (`rdtool/common.mk`, `rdtool/test/bench/Makefile` at 033f0bc0) | LTO | tcmalloc, frame pointer, `-fcilk-no-inline` | same |
+| C-RACER | `-O3 -g -flto -fno-omit-frame-pointer -fcilkplus -fcilk-no-inline`; tcmalloc; rdtool and the Cilk Plus runtime built `-flto` (the runtime also `-fcilk-no-inline`), archive indexed with the gold plugin | `base`: the same flags, runtime and malloc, without `-DRACEDETECT -fcilktool -fsanitize=thread` and librd.a (`rdtool/common.mk`, `rdtool/test/bench/Makefile` at 033f0bc0) | LTO | tcmalloc, frame pointer, `-fcilk-no-inline` | same |
 | PINT | `-O3 -g -flto -fno-omit-frame-pointer -fcilkplus`; tcmalloc; static libcilkrts.a | the same, without `-fsanitize=cilk -DRD_TOOL` and the tool objects | LTO: the tool objects are LLVM IR bitcode | tcmalloc, frame pointer | same |
 | SPD3 port, PTRacer, FastRacer (2 programs) | our clang 21.1.3, `-O3 -std=c++11 -fgnuc-version=5.4.0`, TBB 4.3 include copy with the one-line enum fix; hand-placed RecordMem calls, no `-ftaskdebug`; linked with g++ 5.4 against dynamic libftdebug.so (built with g++ 5.4 at -O3, their library Makefiles) and libtbb.so.2 | the same compiler and flags, no RecordMem (`notool.h`), `notool-stub.o`, the notool libftdebug.so and libtbb.so.2 | out-of-line calls through the PLT into a shared library | no LTO of the hooks; dynamic tool library | same (same compiler, flags and headers; both dynamic) |
 | SPD3 port, PTRacer (every access) | our compiler, `-O3 -ftapir=lambda -cilksan-ptracer-hooks`; shim built with clang 3.7 `-O2`; dynamic libftdebug.so | notool-lambda: the same compiler and flags, the shim's notool build, no tool library | out-of-line calls into the shim, then into the shared library | no LTO of the hooks; dynamic tool library | same compiler and flags |
@@ -113,13 +113,29 @@ f64-notool binaries from `ours/ours.sh`.
   - `cracer.def` installs Ubuntu's `python` package (2.7, as `/usr/bin/python`), since LLVM 3.4's configure looks
     for `python`.
   - A copy of the `-flto` runtime archive is indexed with `ranlib --plugin LLVMgold.so`.
+- **Build-flag fix:** the runtime is compiled with `-fcilk-no-inline`, as the README requires and as
+  `rdtool/common.mk` already does for rdtool and the programs; the runtime's own Makefile omits it.
+  - The Batcher runtime keeps the deque tail as a pointer to a pointer. Without the flag, the runtime's own cilk_for
+    spawns with clang-cilk's inline single-pointer push. That push overwrites the batch deque during the detector's
+    relabel batch, and the run aborts at `batcher.c:219` on any program large enough to relabel.
+  - The runtime gets no `-fcilktool` or `-fsanitize`, so no hook and no check changes, and `base` links the same
+    runtime.
 
-**Run:** a gate, then 3 rounds at P=1 and 24, and peak RSS at P=1. The program's time is the one all-digit line of
-its output (matmul prints "Max error" first). The other 8 programs abort at every optimization level (note b).
+**Run:**
+- The programs are the authors' `rdtool/test/bench` programs, at their `run_bench.py` inputs, except:
+  - cilksort is at 25M;
+  - qsort (10M), nqueens (12), knapsack (example 3) and strassen (1024) are smaller, so that brd stays under a
+    56 GB RSS cap. brd memory grows with the number of spawned tasks.
+- Gate: base at P=1 and brd at P=1 and 24, each under the cap, with the program's `-c` check at P=1 where it has
+  one. A (program, P) cell is kept if it exits 0 with no race report and the same result as base.
+  - nqueens reports races at P>1 because of its own alloca-after-spawn, so it is kept at P=1 only.
+  - fft's `-c` runs a fixed self-test, and brd crashes in it, so fft is dropped.
+- Then 3 rounds at P=1 and 24 over the kept cells, and peak RSS at P=1. The program's time is the one all-digit line
+  of its output (matmul prints "Max error" first).
 
 **Reproduce:** `cracer/cracer.sh` (build, then run) does the Table 1 configuration from a clean directory: image
-`cracer/cracer.def`, the four clones at their pins, `cracer/cracer.diff`, compiler, `-flto` runtime with the indexed
-archive, rdtool, gate, sweep at P=1 and 24, peak RSS and summary.
+`cracer/cracer.def`, the four clones at their pins, `cracer/cracer.diff`, compiler, `-flto -fcilk-no-inline` runtime
+with the indexed archive, rdtool, gate, sweep at P=1 and 24, peak RSS and summary. The node needs about 64 GB.
 
 **Redistributable:** license not checked; we redistribute nothing. A third party fetches the four repositories at
 the pinned commits.
